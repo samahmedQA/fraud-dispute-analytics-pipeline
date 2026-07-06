@@ -1,0 +1,270 @@
+version: 2
+
+models:
+  - name: br_customers
+    description: >
+      Bronze customer model that flattens raw JSON customer records from Snowflake RAW into typed relational columns.
+      This model preserves one row per customer and acts as the customer dimension input for silver models.
+    columns:
+      - name: customer_id
+        description: Unique customer identifier from the source system.
+        data_tests:
+          - not_null
+          - unique
+      - name: account_id
+        description: Account identifier associated with the customer.
+        data_tests:
+          - not_null
+      - name: customer_age
+        description: Customer age used for customer-level segmentation.
+      - name: account_status
+        description: Current account status such as active or inactive.
+      - name: state
+        description: Customer state used for geographic analysis.
+
+  - name: br_transactions
+    description: >
+      Bronze transaction model that flattens raw JSON transaction records into typed columns.
+      This is the primary transaction-level table used for fraud scoring, dispute joins and downstream KPI marts.
+    columns:
+      - name: transaction_id
+        description: Unique transaction identifier.
+        data_tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: Customer associated with the transaction.
+        data_tests:
+          - not_null
+      - name: account_id
+        description: Account associated with the transaction.
+      - name: merchant_id
+        description: Merchant identifier for the transaction.
+      - name: transaction_amount
+        description: Transaction dollar amount.
+        data_tests:
+          - not_null
+      - name: transaction_timestamp
+        description: Timestamp when the transaction occurred.
+      - name: transaction_status
+        description: Transaction status such as approved, declined or reversed.
+      - name: card_network
+        description: Card network used for the transaction.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Visa', 'Mastercard', 'Pulse']
+      - name: merchant_category
+        description: Merchant category used for fraud and spend analysis.
+      - name: country
+        description: Country where the transaction occurred.
+
+  - name: br_fraud_signals
+    description: >
+      Bronze fraud signal model that flattens model scores, rule triggers, device risk and velocity features.
+      This table is joined to transaction data in the silver layer to create enriched fraud analytics.
+    columns:
+      - name: transaction_id
+        description: Transaction identifier that links fraud signals back to the transaction.
+        data_tests:
+          - not_null
+          - unique
+      - name: fraud_score
+        description: Synthetic fraud risk score between 0 and 1.
+        data_tests:
+          - not_null
+      - name: risk_level
+        description: Risk category assigned to the transaction.
+      - name: rule_triggered
+        description: Fraud rule or signal triggered for the transaction.
+      - name: device_risk_score
+        description: Device-level risk score.
+      - name: velocity_count
+        description: Count of recent transaction activity used as a velocity signal.
+      - name: model_version
+        description: Version of the synthetic fraud scoring model.
+      - name: score_timestamp
+        description: Timestamp when the fraud score was generated.
+
+  - name: br_disputes
+    description: >
+      Bronze dispute model that flattens raw dispute records.
+      This model links disputes back to transactions and supports chargeback and dispute outcome reporting.
+    columns:
+      - name: dispute_id
+        description: Unique dispute identifier.
+        data_tests:
+          - not_null
+          - unique
+      - name: claim_id
+        description: Claim identifier associated with the dispute.
+      - name: transaction_id
+        description: Transaction being disputed.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('br_transactions')
+                field: transaction_id
+      - name: dispute_reason
+        description: Reason why the transaction was disputed.
+      - name: dispute_amount
+        description: Amount disputed by the customer.
+      - name: dispute_status
+        description: Current status of the dispute.
+      - name: opened_date
+        description: Date and time when the dispute was opened.
+      - name: card_network
+        description: Card network associated with the disputed transaction.
+
+  - name: br_chargeback_outcomes
+    description: >
+      Bronze chargeback outcome model that flattens raw chargeback outcome records.
+      This table captures win, loss, pending, final amount and resolution details for disputes that became chargebacks.
+    columns:
+      - name: chargeback_id
+        description: Unique chargeback identifier.
+        data_tests:
+          - not_null
+          - unique
+      - name: dispute_id
+        description: Dispute identifier linked to the chargeback.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('br_disputes')
+                field: dispute_id
+      - name: outcome
+        description: Chargeback outcome such as Won, Lost or Pending.
+      - name: win_loss_flag
+        description: Simplified flag representing the win/loss result.
+      - name: final_amount
+        description: Final amount associated with the chargeback outcome.
+      - name: resolved_date
+        description: Date when the chargeback was resolved.
+      - name: representment_required
+        description: Boolean flag showing whether representment was required.
+
+  - name: silver_transactions_enriched
+    description: >
+      Silver transaction model that combines transactions, customers and fraud signals into one enriched transaction-level table.
+      This model creates the high-risk transaction flag used by downstream fraud KPI marts.
+    columns:
+      - name: transaction_id
+        description: Unique transaction identifier.
+        data_tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: Customer associated with the transaction.
+        data_tests:
+          - not_null
+      - name: fraud_score
+        description: Fraud score used to determine risk level and high-risk transaction flags.
+      - name: high_risk_transaction_flag
+        description: Business flag set to true when the transaction is considered high risk based on fraud score or risk level.
+      - name: modeled_at
+        description: Timestamp when the dbt model was built.
+
+  - name: silver_dispute_outcomes
+    description: >
+      Silver dispute outcome model that joins disputes to enriched transactions and chargeback outcomes.
+      This model provides a clean dispute-level view with fraud context, chargeback status, final amount and resolution timing.
+    columns:
+      - name: dispute_id
+        description: Unique dispute identifier.
+        data_tests:
+          - not_null
+          - unique
+      - name: transaction_id
+        description: Transaction associated with the dispute.
+        data_tests:
+          - not_null
+      - name: chargeback_id
+        description: Chargeback identifier when a dispute became a chargeback.
+      - name: chargeback_outcome
+        description: Outcome of the chargeback such as Won, Lost or Pending.
+      - name: days_to_resolution
+        description: Number of days between dispute open date and chargeback resolution date.
+      - name: modeled_at
+        description: Timestamp when the dbt model was built.
+
+  - name: gold_fraud_summary_by_network
+    description: >
+      Gold mart that summarizes transaction volume, transaction amount, fraud score and high-risk rate by card network.
+      This table is designed for executive fraud reporting and dashboard summary views.
+    columns:
+      - name: card_network
+        description: Card network grouped in the fraud summary.
+      - name: total_transactions
+        description: Total number of transactions for the card network.
+      - name: high_risk_transactions
+        description: Count of transactions flagged as high risk.
+      - name: high_risk_rate_pct
+        description: Percentage of transactions flagged as high risk.
+
+  - name: gold_dispute_chargeback_summary_by_network
+    description: >
+      Gold mart that summarizes dispute and chargeback performance by card network.
+      It includes dispute volume, chargeback counts, won/lost/pending outcomes, win rate, final amounts and resolution timing.
+    columns:
+      - name: card_network
+        description: Card network grouped in the dispute and chargeback summary.
+      - name: total_disputes
+        description: Total number of disputes for the card network.
+      - name: total_chargebacks
+        description: Number of disputes that became chargebacks.
+      - name: chargebacks_won
+        description: Count of chargebacks with a Won outcome.
+      - name: chargebacks_lost
+        description: Count of chargebacks with a Lost outcome.
+      - name: chargeback_win_rate_pct
+        description: Percentage of chargebacks won.
+
+  - name: gold_daily_fraud_kpis
+    description: >
+      Gold daily fraud KPI mart grouped by transaction date and card network.
+      This model supports dashboard trends for transaction volume, transaction amount, fraud score, high-risk count and unique customers.
+    columns:
+      - name: transaction_date
+        description: Transaction date used for daily fraud reporting.
+      - name: card_network
+        description: Card network used for daily grouping.
+      - name: total_transactions
+        description: Number of transactions for the day and card network.
+      - name: total_transaction_amount
+        description: Total transaction amount for the day and card network.
+      - name: high_risk_transactions
+        description: Number of transactions flagged as high risk.
+
+  - name: gold_daily_dispute_kpis
+    description: >
+      Gold daily dispute KPI mart grouped by dispute opened date and card network.
+      This model supports dashboard trends for dispute volume, dispute amount, chargeback outcomes and resolution timing.
+    columns:
+      - name: dispute_opened_date
+        description: Date the dispute was opened.
+      - name: card_network
+        description: Card network used for daily dispute grouping.
+      - name: total_disputes
+        description: Number of disputes opened on that date.
+      - name: total_chargebacks
+        description: Number of disputes that became chargebacks.
+      - name: avg_days_to_resolution
+        description: Average number of days to resolve chargebacks for that date and network.
+
+  - name: monitoring_pipeline_row_counts
+    description: >
+      Monitoring model that captures row counts across RAW, SILVER and GOLD pipeline objects.
+      This table provides a lightweight observability check to confirm that key pipeline layers are populated after a dbt build.
+    columns:
+      - name: layer
+        description: Pipeline layer such as RAW, SILVER or GOLD.
+      - name: object_name
+        description: Name of the source table or dbt model being monitored.
+      - name: row_count
+        description: Number of rows in the monitored object.
+      - name: checked_at
+        description: Timestamp when the row count check was generated.

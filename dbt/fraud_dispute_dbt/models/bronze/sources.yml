@@ -1,0 +1,12 @@
+version: 2
+
+sources:
+  - name: fraud_raw
+    database: FRAUD_DISPUTE_DB
+    schema: RAW
+    tables:
+      - name: RAW_CUSTOMERS
+      - name: RAW_TRANSACTIONS
+      - name: RAW_FRAUD_SIGNALS
+      - name: RAW_DISPUTES
+      - name: RAW_CHARGEBACK_OUTCOMES
