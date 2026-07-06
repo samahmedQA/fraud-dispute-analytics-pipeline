@@ -12,4 +12,7 @@ logs/
 
 data/raw/*.json
 
-.DS_Store
+.DS_Storedata/s3_partitioned/
+
+data/s3_partitioned/
+data/s3_partitioned/**
