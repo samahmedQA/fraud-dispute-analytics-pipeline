@@ -16,3 +16,5 @@ data/raw/*.json
 
 data/s3_partitioned/
 data/s3_partitioned/**
+
+aws_*_policy.json
