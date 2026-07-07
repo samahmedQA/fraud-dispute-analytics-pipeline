@@ -2,11 +2,11 @@
 
 ## Overview
 
-This project is an end-to-end fintech analytics pipeline built with Python, AWS S3, Snowflake, and dbt.
+This project is an end-to-end fintech analytics pipeline built with Python, AWS S3, Snowflake, Snowpipe, and dbt.
 
 It generates synthetic transaction, fraud signal, dispute, and chargeback data, organizes the raw files into partitioned S3-ready folders, uploads them to AWS S3, loads them into Snowflake RAW tables through an external stage, and transforms the data through dbt bronze, silver, and gold models.
 
-The project also includes dbt data quality tests, pipeline row-count monitoring, and dbt documentation with lineage.
+The project also includes manual S3 batch loading, a Snowpipe auto-ingest test, dbt data quality tests, pipeline row-count monitoring, and dbt documentation with lineage.
 
 ## Business Problem
 
@@ -26,6 +26,7 @@ This project simulates that workflow by creating trusted reporting tables for:
 - Python
 - AWS S3
 - Snowflake
+- Snowpipe
 - dbt
 - SQL
 - JSON
@@ -36,25 +37,25 @@ This project simulates that workflow by creating trusted reporting tables for:
 
 ```text
 Python Synthetic Data Generator
-        ?
+        ↓
 Local JSON Files
-        ?
+        ↓
 Partitioned Local Raw Zone
-        ?
+        ↓
 AWS S3 Raw Zone
-        ?
+        ↓
 Snowflake Storage Integration
-        ?
+        ↓
 Snowflake External Stage
-        ?
+        ↓
 Snowflake RAW Tables
-        ?
+        ↓
 dbt Bronze Models
-        ?
+        ↓
 dbt Silver Models
-        ?
+        ↓
 dbt Gold Marts
-        ?
+        ↓
 dbt Tests + Monitoring
 ```
 
@@ -66,19 +67,19 @@ Example S3 layout:
 
 ```text
 raw/
-+-- customers/
-�   +-- year=YYYY/month=MM/
-+-- transactions/
-�   +-- year=YYYY/month=MM/
-+-- fraud_signals/
-�   +-- year=YYYY/month=MM/
-+-- disputes/
-�   +-- year=YYYY/month=MM/
-+-- chargeback_outcomes/
-    +-- year=YYYY/month=MM/
+├── customers/
+│   └── year=YYYY/month=MM/
+├── transactions/
+│   └── year=YYYY/month=MM/
+├── fraud_signals/
+│   └── year=YYYY/month=MM/
+├── disputes/
+│   └── year=YYYY/month=MM/
+└── chargeback_outcomes/
+    └── year=YYYY/month=MM/
 ```
 
-This layout supports cleaner backfills, dataset-level loading, and future Snowpipe automation.
+This layout supports cleaner backfills, dataset-level loading, and future automation.
 
 ## Data Sources
 
@@ -171,16 +172,79 @@ Model:
 
 This table provides a lightweight observability check to confirm that key pipeline tables are populated after each dbt build.
 
+## S3 Ingestion Milestone
+
+The pipeline supports AWS S3-based ingestion.
+
+Completed S3 workflow:
+
+```text
+Local JSON files
+→ partitioned local raw zone
+→ AWS S3 raw zone
+→ Snowflake storage integration
+→ Snowflake external stage
+→ Snowflake RAW tables
+→ dbt bronze/silver/gold models
+→ dbt tests and monitoring
+```
+
+The Snowflake RAW tables were successfully loaded from the S3 raw zone and validated with the following row counts:
+
+```text
+RAW_CUSTOMERS              1500
+RAW_TRANSACTIONS           10000
+RAW_FRAUD_SIGNALS          10000
+RAW_DISPUTES               1200
+RAW_CHARGEBACK_OUTCOMES    840
+```
+
+The full dbt build passed successfully after loading from S3:
+
+```text
+PASS=38
+WARN=0
+ERROR=0
+TOTAL=38
+```
+
+## Snowpipe Auto-Ingest Milestone
+
+The project also includes a Snowpipe auto-ingest test flow.
+
+Snowpipe test workflow:
+
+```text
+New JSON file uploaded to S3
+→ S3 object-created event notification
+→ Snowflake Snowpipe notification channel
+→ Snowpipe COPY INTO execution
+→ test RAW table populated automatically
+```
+
+Test objects:
+
+| Object | Purpose |
+|---|---|
+| RAW_TRANSACTIONS_PIPE_TEST | Test table used to validate Snowpipe loading |
+| PIPE_TRANSACTIONS_SNOWPIPE_TEST | Snowpipe object configured with AUTO_INGEST = TRUE |
+| raw/snowpipe_test/transactions/ | S3 test prefix used for Snowpipe event notifications |
+
+The Snowpipe test successfully loaded a new transaction JSON file from S3 into Snowflake automatically.
+
+This validates an event-driven ingestion pattern in addition to the manual S3 batch load process.
+
 ## SQL Scripts
 
 The `sql/` folder includes reusable Snowflake scripts:
 
 | Script | Purpose |
 |---|---|
+| snowflake_setup.sql | Creates core Snowflake database objects |
 | setup_s3_stage_template.sql | Safe template for creating a Snowflake storage integration and S3 external stage |
 | load_raw_from_s3.sql | Reloads RAW tables from the S3 raw zone |
 | validate_raw_counts.sql | Validates RAW table row counts after loading |
-| snowflake_setup.sql | Creates core Snowflake database objects |
+| setup_snowpipe_template.sql | Safe template for testing Snowpipe auto-ingest |
 
 ## How to Run
 
@@ -208,7 +272,17 @@ python scripts\partition_data_for_s3.py
 aws s3 cp data/s3_partitioned/raw/ s3://<bucket-name>/raw/ --recursive
 ```
 
-### 5. Load RAW tables from S3
+### 5. Set up Snowflake S3 stage
+
+Use this safe template:
+
+```text
+sql/setup_s3_stage_template.sql
+```
+
+This creates the Snowflake storage integration, file format, and external stage.
+
+### 6. Load RAW tables from S3
 
 Run this Snowflake script:
 
@@ -216,7 +290,7 @@ Run this Snowflake script:
 sql/load_raw_from_s3.sql
 ```
 
-### 6. Validate RAW row counts
+### 7. Validate RAW row counts
 
 Run this Snowflake script:
 
@@ -234,19 +308,29 @@ RAW_DISPUTES               1200
 RAW_CHARGEBACK_OUTCOMES    840
 ```
 
-### 7. Run dbt build
+### 8. Run dbt build
 
 ```powershell
 cd dbt\fraud_dispute_dbt
 python -c "from dbt.cli.main import cli; cli()" build
 ```
 
-### 8. Generate dbt docs
+### 9. Generate dbt docs
 
 ```powershell
 python -c "from dbt.cli.main import cli; cli()" docs generate
 python -c "from dbt.cli.main import cli; cli()" docs serve
 ```
+
+### 10. Test Snowpipe auto-ingest
+
+Use this safe template:
+
+```text
+sql/setup_snowpipe_template.sql
+```
+
+The Snowpipe test uses a separate test table and test S3 prefix so it does not affect the main RAW tables.
 
 ## Current Status
 
@@ -259,6 +343,7 @@ Completed:
 - Snowflake storage integration
 - Snowflake external stage
 - Snowflake RAW JSON loading from S3
+- Snowpipe auto-ingest test
 - dbt bronze models
 - dbt silver enrichment models
 - dbt gold KPI marts
@@ -271,7 +356,7 @@ Completed:
 
 Next phases:
 
-- Add Snowpipe auto-ingest
+- Expand Snowpipe from a test prefix to full dataset ingestion
 - Add dashboard layer
 - Add GitHub Actions CI/CD
 - Add screenshots to README
@@ -279,4 +364,4 @@ Next phases:
 
 ## Note
 
-This project uses fully synthetic data. It does not contain company data, customer data, production credentials, AWS policy files, or secrets.
+This project uses fully synthetic data. It does not contain company data, customer data, production credentials, AWS policy files, Snowflake external IDs, or secrets.
