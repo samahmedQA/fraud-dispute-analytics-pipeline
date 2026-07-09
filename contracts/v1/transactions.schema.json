@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "transactions.schema.v1.json",
+  "title": "Transactions Contract v1",
+  "description": "Version 1 contract for synthetic card transaction records before S3 ingestion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "transaction_id",
+    "customer_id",
+    "account_id",
+    "merchant_id",
+    "transaction_amount",
+    "transaction_timestamp",
+    "transaction_status",
+    "card_network",
+    "merchant_category",
+    "country"
+  ],
+  "properties": {
+    "transaction_id": {
+      "type": "string",
+      "pattern": "^TXN_[0-9]{8}$"
+    },
+    "customer_id": {
+      "type": "string",
+      "pattern": "^CUST_[0-9]{6}$"
+    },
+    "account_id": {
+      "type": "string",
+      "pattern": "^ACCT_[0-9]{6}$"
+    },
+    "merchant_id": {
+      "type": "string",
+      "pattern": "^MERCH_[0-9]{5}$"
+    },
+    "transaction_amount": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "transaction_timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$"
+    },
+    "transaction_status": {
+      "type": "string",
+      "enum": ["Approved", "Declined", "Reversed"]
+    },
+    "card_network": {
+      "type": "string",
+      "enum": ["Mastercard", "Pulse", "Visa"]
+    },
+    "merchant_category": {
+      "type": "string",
+      "enum": ["Electronics", "Food", "Gas", "Online", "Retail", "Travel"]
+    },
+    "country": {
+      "type": "string",
+      "enum": ["US"]
+    }
+  }
+}
