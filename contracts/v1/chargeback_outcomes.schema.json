@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chargeback_outcomes.schema.v1.json",
+  "title": "Chargeback Outcomes Contract v1",
+  "description": "Version 1 contract for synthetic chargeback outcome records before S3 ingestion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "chargeback_id",
+    "dispute_id",
+    "outcome",
+    "win_loss_flag",
+    "final_amount",
+    "resolved_date",
+    "representment_required"
+  ],
+  "properties": {
+    "chargeback_id": {
+      "type": "string",
+      "pattern": "^CBK_[0-9]{7}$"
+    },
+    "dispute_id": {
+      "type": "string",
+      "pattern": "^DISP_[0-9]{7}$"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["Lost", "Pending", "Won"]
+    },
+    "win_loss_flag": {
+      "type": "string",
+      "enum": ["Loss", "Pending", "Win"]
+    },
+    "final_amount": {
+      "type": "number",
+      "minimum": 0
+    },
+    "resolved_date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "representment_required": {
+      "type": "boolean"
+    }
+  }
+}

@@ -18,6 +18,12 @@ CONTRACT_VERSION = "v1"
 
 
 DATASETS = {
+    "chargeback_outcomes": {
+        "raw_file": RAW_DATA_DIR / "chargeback_outcomes.json",
+        "schema_file": CONTRACTS_DIR / "chargeback_outcomes.schema.json",
+        "primary_key": "chargeback_id",
+        "timestamp_field": "resolved_date",
+    },
     "customers": {
         "raw_file": RAW_DATA_DIR / "customers.json",
         "schema_file": CONTRACTS_DIR / "customers.schema.json",
