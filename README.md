@@ -363,18 +363,53 @@ Current contract version:
 contracts/v1/
 ```
 
-The first implemented contract validates transaction records using JSON Schema:
+The pipeline now includes versioned contracts for all five raw datasets:
 
 ```text
+contracts/v1/customers.schema.json
 contracts/v1/transactions.schema.json
+contracts/v1/fraud_signals.schema.json
+contracts/v1/disputes.schema.json
+contracts/v1/chargeback_outcomes.schema.json
 ```
 
-The contract enforces required fields, expected data types, valid enum values, and ID patterns for transaction records.
+These contracts enforce required fields, expected data types, valid enum values, ID patterns, date/timestamp formats, and numeric boundaries before raw data is allowed to continue toward S3 ingestion.
 
 Validation is performed before S3 upload using:
 
 ```powershell
 python scripts/validate_data_contracts.py
+```
+
+Current full validation result:
+
+```text
+Dataset: chargeback_outcomes
+Status: PASSED
+Total Records: 840
+Invalid Records: 0
+
+Dataset: customers
+Status: PASSED
+Total Records: 1500
+Invalid Records: 0
+
+Dataset: disputes
+Status: PASSED
+Total Records: 1200
+Invalid Records: 0
+
+Dataset: fraud_signals
+Status: PASSED
+Total Records: 10000
+Invalid Records: 0
+
+Dataset: transactions
+Status: PASSED
+Total Records: 10000
+Invalid Records: 0
+
+Validator exit code was 0
 ```
 
 ### Severity-Based Failure Design
