@@ -1,3 +1,4 @@
+import argparse
 import json
 from collections import Counter
 from datetime import datetime
@@ -185,8 +186,9 @@ def write_validation_report(dataset_name, report):
     return report_path
 
 
-def validate_dataset(dataset_name, config):
-    records = load_json_lines(config["raw_file"])
+def validate_dataset(dataset_name, config, input_file_override=None):
+    raw_file = Path(input_file_override) if input_file_override else config["raw_file"]
+    records = load_json_lines(raw_file)
     schema = load_schema(config["schema_file"])
 
     primary_key = config["primary_key"]
@@ -274,10 +276,26 @@ def validate_dataset(dataset_name, config):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Validate raw data files against versioned data contracts.")
+    parser.add_argument("--dataset", choices=DATASETS.keys(), help="Dataset to validate.")
+    parser.add_argument("--input-file", help="Optional input file override for testing fixtures.")
+    args = parser.parse_args()
+
+    if args.input_file and not args.dataset:
+        raise SystemExit("--dataset is required when using --input-file.")
+
     overall_status = "PASSED"
 
-    for dataset_name, config in DATASETS.items():
-        dataset_status = validate_dataset(dataset_name, config)
+    datasets_to_run = {args.dataset: DATASETS[args.dataset]} if args.dataset else DATASETS
+
+    for dataset_name, config in datasets_to_run.items():
+        dataset_input_file = args.input_file if args.dataset == dataset_name else None
+
+        dataset_status = validate_dataset(
+            dataset_name=dataset_name,
+            config=config,
+            input_file_override=dataset_input_file,
+        )
 
         if dataset_status == "FAILED":
             overall_status = "FAILED"
