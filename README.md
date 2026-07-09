@@ -352,6 +352,109 @@ sql/setup_snowpipe_template.sql
 
 The Snowpipe test uses a separate test table and test S3 prefix so it does not affect the main RAW tables.
 
+
+## Data Contracts and Failure Handling
+
+The pipeline includes versioned data contracts to validate raw source data before ingestion into AWS S3 and Snowflake.
+
+Current contract version:
+
+```text
+contracts/v1/
+```
+
+The first implemented contract validates transaction records using JSON Schema:
+
+```text
+contracts/v1/transactions.schema.json
+```
+
+The contract enforces required fields, expected data types, valid enum values, and ID patterns for transaction records.
+
+Validation is performed before S3 upload using:
+
+```powershell
+python scripts/validate_data_contracts.py
+```
+
+### Severity-Based Failure Design
+
+The project does not treat every data issue the same way. It uses severity tiers to decide how the pipeline should respond when data is wrong.
+
+| Severity | Example | Pipeline Behavior |
+|---|---|---|
+| hard_fail | Missing required field, wrong data type, invalid enum value, duplicate primary key | Quarantine invalid records, write a validation report, mark batch as FAILED, and block S3 upload |
+| quarantine_continue | Invalid child record, such as a chargeback referencing a missing dispute | Quarantine the invalid child records, write a validation report, and allow valid records to continue |
+| warn_continue | Late-arriving event or unusually old transaction date | Write a warning to the validation report and continue the pipeline |
+
+For structural contract violations, the project uses a strict batch-level hard-fail policy. If any transaction record has a `hard_fail`, the entire dataset batch is blocked from S3 upload. This is intentional because structural issues may indicate the upstream source or generator is broken, not just one isolated record.
+
+### Validation Report
+
+Each validation run writes a detailed report to:
+
+```text
+data/validation_reports/
+```
+
+The report includes:
+
+- Dataset name
+- Contract version
+- Batch status
+- Pipeline action
+- Total record count
+- Valid record count
+- Invalid record count
+- Warning count
+- Failed rule details
+- Severity for each failed rule
+
+Example failed rule output:
+
+```text
+transactions  TXN_99999999  card_network        enum  hard_fail  'Discover' is not one of ['Mastercard', 'Pulse', 'Visa']
+transactions  TXN_99999999  transaction_amount  type  hard_fail  'one hundred' is not of type 'number'
+```
+
+### Quarantine Handling
+
+Invalid records are written to:
+
+```text
+data/quarantine/invalid_records/
+```
+
+These files are ignored by Git because they are generated validation artifacts.
+
+### Repeatable Bad-Data Test
+
+A repeatable fixture proves the failure path:
+
+```text
+tests/fixtures/bad_transactions.json
+```
+
+Run the failure test with:
+
+```powershell
+python scripts/validate_data_contracts.py --dataset transactions --input-file tests\fixtures\bad_transactions.json
+```
+
+Expected result:
+
+```text
+Dataset: transactions
+Status: FAILED
+Pipeline Action: BLOCK_S3_UPLOAD
+Total Records: 2
+Invalid Records: 1
+Warnings: 0
+```
+
+This proves the pipeline can detect invalid data, quarantine the bad record, write a debuggable validation report, return a failing exit code, and block ingestion before bad data reaches S3 or Snowflake.
+
+
 ## Current Status
 
 Completed:
