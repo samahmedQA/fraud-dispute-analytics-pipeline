@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "disputes.schema.v1.json",
+  "title": "Disputes Contract v1",
+  "description": "Version 1 contract for synthetic dispute records before S3 ingestion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "dispute_id",
+    "claim_id",
+    "transaction_id",
+    "dispute_reason",
+    "dispute_amount",
+    "dispute_status",
+    "opened_date",
+    "card_network"
+  ],
+  "properties": {
+    "dispute_id": {
+      "type": "string",
+      "pattern": "^DISP_[0-9]{7}$"
+    },
+    "claim_id": {
+      "type": "string",
+      "pattern": "^CLM_[0-9]{7}$"
+    },
+    "transaction_id": {
+      "type": "string",
+      "pattern": "^TXN_[0-9]{8}$"
+    },
+    "dispute_reason": {
+      "type": "string",
+      "enum": ["Duplicate Charge", "Fraud", "Incorrect Amount", "Product Not Received"]
+    },
+    "dispute_amount": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "dispute_status": {
+      "type": "string",
+      "enum": ["Denied", "Opened", "Resolved", "Under Review"]
+    },
+    "opened_date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "card_network": {
+      "type": "string",
+      "enum": ["Mastercard", "Pulse", "Visa"]
+    }
+  }
+}
