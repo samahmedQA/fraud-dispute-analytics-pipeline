@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fraud_signals.schema.v1.json",
+  "title": "Fraud Signals Contract v1",
+  "description": "Version 1 contract for synthetic fraud signal records before S3 ingestion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "transaction_id",
+    "fraud_score",
+    "risk_level",
+    "rule_triggered",
+    "device_risk_score",
+    "velocity_count",
+    "model_version",
+    "score_timestamp"
+  ],
+  "properties": {
+    "transaction_id": {
+      "type": "string",
+      "pattern": "^TXN_[0-9]{8}$"
+    },
+    "fraud_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["Low", "Medium", "High"]
+    },
+    "rule_triggered": {
+      "type": "string",
+      "enum": ["Amount Spike", "High Amount", "New Device", "None", "Unusual Merchant"]
+    },
+    "device_risk_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "velocity_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "model_version": {
+      "type": "string",
+      "enum": ["v1.0", "v1.1", "v1.2"]
+    },
+    "score_timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$"
+    }
+  }
+}

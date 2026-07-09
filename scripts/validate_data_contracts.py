@@ -24,6 +24,12 @@ DATASETS = {
         "primary_key": "customer_id",
         "timestamp_field": "created_at",
     },
+    "fraud_signals": {
+        "raw_file": RAW_DATA_DIR / "fraud_signals.json",
+        "schema_file": CONTRACTS_DIR / "fraud_signals.schema.json",
+        "primary_key": "transaction_id",
+        "timestamp_field": "score_timestamp",
+    },
     "transactions": {
         "raw_file": RAW_DATA_DIR / "transactions.json",
         "schema_file": CONTRACTS_DIR / "transactions.schema.json",
