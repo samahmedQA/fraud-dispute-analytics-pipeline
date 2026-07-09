@@ -20,3 +20,5 @@ data/s3_partitioned/**
 aws_*_policy.json
 
 s3_snowpipe_notification_config.json
+data/validation_reports/
+data/quarantine/
