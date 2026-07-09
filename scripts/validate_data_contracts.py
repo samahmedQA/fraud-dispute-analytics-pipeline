@@ -18,12 +18,18 @@ CONTRACT_VERSION = "v1"
 
 
 DATASETS = {
+    "customers": {
+        "raw_file": RAW_DATA_DIR / "customers.json",
+        "schema_file": CONTRACTS_DIR / "customers.schema.json",
+        "primary_key": "customer_id",
+        "timestamp_field": "created_at",
+    },
     "transactions": {
         "raw_file": RAW_DATA_DIR / "transactions.json",
         "schema_file": CONTRACTS_DIR / "transactions.schema.json",
         "primary_key": "transaction_id",
         "timestamp_field": "transaction_timestamp",
-    }
+    },
 }
 
 

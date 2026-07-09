@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "customers.schema.v1.json",
+  "title": "Customers Contract v1",
+  "description": "Version 1 contract for synthetic customer records before S3 ingestion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "customer_id",
+    "account_id",
+    "customer_age",
+    "account_status",
+    "state",
+    "created_at"
+  ],
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "pattern": "^CUST_[0-9]{6}$"
+    },
+    "account_id": {
+      "type": "string",
+      "pattern": "^ACCT_[0-9]{6}$"
+    },
+    "customer_age": {
+      "type": "integer",
+      "minimum": 18,
+      "maximum": 120
+    },
+    "account_status": {
+      "type": "string",
+      "enum": ["Active", "Closed", "Suspended"]
+    },
+    "state": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$"
+    },
+    "created_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    }
+  }
+}
