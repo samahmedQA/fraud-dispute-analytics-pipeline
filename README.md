@@ -104,6 +104,26 @@ The Snowflake database is organized into four schemas:
 | MARTS | Stores business-ready gold reporting tables |
 | MONITORING | Stores pipeline observability tables |
 
+
+## Environment Strategy
+
+The project supports environment separation between development and staging Snowflake targets.
+
+Current environments:
+
+| Environment | Snowflake Database | Purpose |
+|---|---|---|
+| DEV | FRAUD_DISPUTE_DB | Primary development and experimentation environment |
+| STG | FRAUD_DISPUTE_STG | Clean staging validation environment used to prove the pipeline works outside development |
+| PROD | Planned template | Future protected production deployment pattern |
+
+Each environment follows the same schema layout:
+
+```text
+RAW
+STAGING
+MARTS
+MONITORING
 ## dbt Model Layers
 
 ### Bronze
