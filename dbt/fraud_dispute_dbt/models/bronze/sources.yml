@@ -2,7 +2,7 @@ version: 2
 
 sources:
   - name: fraud_raw
-    database: FRAUD_DISPUTE_DB
+    database: "{{ target.database }}"
     schema: RAW
     tables:
       - name: RAW_CUSTOMERS
