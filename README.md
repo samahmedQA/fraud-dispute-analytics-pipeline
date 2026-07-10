@@ -505,7 +505,127 @@ Validator exit code was 0
 
 This proves the pipeline can quarantine an invalid child record, write a debuggable validation report, and continue loading valid records instead of blocking the entire batch.
 
+### Severity Tier Proof
 
+The data contract validator proves three different severity tiers instead of treating every data issue the same way.
+
+| Severity | Example | Status | Pipeline Action | Exit Code |
+|---|---|---|---|---|
+| `hard_fail` | Wrong data type, invalid enum, missing required field, duplicate primary key | `FAILED` | `BLOCK_S3_UPLOAD` | `1` |
+| `quarantine_continue` | Chargeback references a dispute ID that does not exist | `PASSED_WITH_QUARANTINE` | `UPLOAD_VALID_RECORDS_ONLY` | `0` |
+| `warn_continue` | Late-arriving transaction event | `PASSED_WITH_WARNINGS` | `UPLOAD_ALL_RECORDS` | `0` |
+
+This proves the pipeline can distinguish between:
+
+```text
+structurally invalid data
+orphaned child records
+unusual but acceptable late-arriving data
+```
+
+#### hard_fail proof
+
+The `hard_fail` tier is used when a record has a structural contract violation, such as a wrong data type or invalid enum value.
+
+Fixture:
+
+```text
+tests/fixtures/bad_transactions.json
+```
+
+Run:
+
+```powershell
+python scripts/validate_data_contracts.py --dataset transactions --input-file tests\fixtures\bad_transactions.json
+```
+
+Expected result:
+
+```text
+Dataset: transactions
+Status: FAILED
+Pipeline Action: BLOCK_S3_UPLOAD
+Total Records: 2
+Invalid Records: 1
+Warnings: 0
+Validator exit code was 1
+```
+
+This blocks S3 upload because a structural contract issue may indicate that the upstream source or generator is broken.
+
+#### quarantine_continue proof
+
+The `quarantine_continue` tier is used when a child record is structurally valid but fails a relationship check.
+
+Current relationship rule:
+
+```text
+chargeback_outcomes.dispute_id -> disputes.dispute_id
+```
+
+Fixture:
+
+```text
+tests/fixtures/bad_chargeback_outcomes.json
+```
+
+Run:
+
+```powershell
+python scripts/validate_data_contracts.py --dataset chargeback_outcomes --input-file tests\fixtures\bad_chargeback_outcomes.json
+```
+
+Expected result:
+
+```text
+Dataset: chargeback_outcomes
+Status: PASSED_WITH_QUARANTINE
+Pipeline Action: UPLOAD_VALID_RECORDS_ONLY
+Total Records: 2
+Invalid Records: 1
+Warnings: 0
+Validator exit code was 0
+```
+
+This quarantines the invalid child record while allowing valid records to continue.
+
+#### warn_continue proof
+
+The `warn_continue` tier is used when data is unusual but not necessarily corrupt.
+
+Example:
+
+```text
+late-arriving transaction event
+```
+
+Fixture:
+
+```text
+tests/fixtures/warn_transactions.json
+```
+
+Run:
+
+```powershell
+python scripts\validate_data_contracts.py --dataset transactions --input-file tests\fixtures\warn_transactions.json
+```
+
+Expected result:
+
+```text
+Dataset: transactions
+Status: PASSED_WITH_WARNINGS
+Pipeline Action: UPLOAD_ALL_RECORDS
+Total Records: 2
+Invalid Records: 0
+Warnings: 1
+Validator exit code was 0
+```
+
+This writes a warning to the validation report but does not block or quarantine the record.
+
+Together, these fixtures prove that the pipeline does more than validate schema. It designs and enforces different failure paths based on the severity and blast radius of the data issue.
 ### Repeatable Bad-Data Test
 
 A repeatable fixture proves the failure path:
