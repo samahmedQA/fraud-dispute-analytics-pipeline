@@ -424,6 +424,52 @@ The project does not treat every data issue the same way. It uses severity tiers
 
 For structural contract violations, the project uses a strict batch-level hard-fail policy. If any transaction record has a `hard_fail`, the entire dataset batch is blocked from S3 upload. This is intentional because structural issues may indicate the upstream source or generator is broken, not just one isolated record.
 
+### Validation Audit Logging
+
+Each validation run writes an audit record to:
+
+```text
+data/validation_reports/validation_audit_log.jsonl
+```
+
+The audit log is generated as newline-delimited JSON, which makes each validation event easy to review, query, or load into a monitoring table later.
+
+Each audit record includes:
+
+- Validation run timestamp in UTC
+- Dataset name
+- Contract version
+- Batch status
+- Pipeline action
+- Total record count
+- Valid record count
+- Invalid record count
+- Warning count
+- Severity counts
+- Validation report path
+- Quarantine file path, when applicable
+
+Example audit record:
+
+```json
+{
+  "validation_run_at_utc": "2026-07-10T17:41:32.819890Z",
+  "dataset": "transactions",
+  "contract_version": "v1",
+  "batch_status": "PASSED",
+  "pipeline_action": "UPLOAD_ALL_RECORDS",
+  "total_records": 10000,
+  "valid_records": 10000,
+  "invalid_records": 0,
+  "warning_count": 0,
+  "error_count_by_severity": {},
+  "report_file": "data/validation_reports/transactions_validation_report.json",
+  "quarantine_file": null
+}
+```
+
+This makes the validation layer auditable before orchestration. A future Airflow DAG or CI/CD workflow can use this audit log to track validation outcomes across pipeline runs.
+
 ### Validation Report
 
 Each validation run writes a detailed report to:
