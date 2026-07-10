@@ -1,0 +1,2 @@
+{"chargeback_id":"CBK_8888888","dispute_id":"DISP_0000834","outcome":"Won","win_loss_flag":"Win","final_amount":1381.81,"resolved_date":"2026-03-19","representment_required":true}
+{"chargeback_id":"CBK_9999999","dispute_id":"DISP_9999999","outcome":"Lost","win_loss_flag":"Loss","final_amount":250.00,"resolved_date":"2026-03-20","representment_required":false}

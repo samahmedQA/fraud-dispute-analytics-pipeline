@@ -17,6 +17,18 @@ REPORTS_DIR = PROJECT_ROOT / "data" / "validation_reports"
 CONTRACT_VERSION = "v1"
 
 
+REFERENCE_RULES = {
+    "chargeback_outcomes": [
+        {
+            "child_field": "dispute_id",
+            "parent_dataset": "disputes",
+            "parent_file": RAW_DATA_DIR / "disputes.json",
+            "parent_key": "dispute_id",
+        }
+    ]
+}
+
+
 DATASETS = {
     "chargeback_outcomes": {
         "raw_file": RAW_DATA_DIR / "chargeback_outcomes.json",
@@ -106,6 +118,58 @@ def validate_schema(dataset_name, records, schema, primary_key):
             )
 
             invalid_record_indexes.add(index)
+
+    return failures, invalid_record_indexes
+
+
+def load_reference_keys(parent_file, parent_key):
+    parent_records = load_json_lines(parent_file)
+    return {
+        record.get(parent_key)
+        for _, record in parent_records
+        if record.get(parent_key) is not None
+    }
+
+
+def validate_referential_integrity(dataset_name, records, primary_key):
+    relationship_rules = REFERENCE_RULES.get(dataset_name, [])
+
+    failures = []
+    invalid_record_indexes = set()
+
+    for rule in relationship_rules:
+        parent_keys = load_reference_keys(
+            parent_file=rule["parent_file"],
+            parent_key=rule["parent_key"],
+        )
+
+        child_field = rule["child_field"]
+        parent_dataset = rule["parent_dataset"]
+        parent_key = rule["parent_key"]
+
+        for index, (line_number, record) in enumerate(records):
+            child_value = record.get(child_field)
+
+            if child_value is None:
+                continue
+
+            if child_value not in parent_keys:
+                failures.append(
+                    {
+                        "dataset": dataset_name,
+                        "line_number": line_number,
+                        "record_id": get_record_id(record, primary_key),
+                        "field": child_field,
+                        "rule": "referential_integrity",
+                        "severity": "quarantine_continue",
+                        "message": (
+                            f"{dataset_name}.{child_field} value {child_value} "
+                            f"does not exist in {parent_dataset}.{parent_key}"
+                        ),
+                    }
+                )
+
+                invalid_record_indexes.add(index)
 
     return failures, invalid_record_indexes
 
@@ -230,6 +294,12 @@ def validate_dataset(dataset_name, config, input_file_override=None):
         primary_key=primary_key,
     )
 
+    relationship_failures, relationship_invalid_indexes = validate_referential_integrity(
+        dataset_name=dataset_name,
+        records=records,
+        primary_key=primary_key,
+    )
+
     warnings = validate_late_arriving_transactions(
         dataset_name=dataset_name,
         records=records,
@@ -237,7 +307,7 @@ def validate_dataset(dataset_name, config, input_file_override=None):
         timestamp_field=config["timestamp_field"],
     )
 
-    failed_rules = schema_failures + duplicate_failures + warnings
+    failed_rules = schema_failures + duplicate_failures + relationship_failures + warnings
 
     hard_failures = [failure for failure in failed_rules if failure["severity"] == "hard_fail"]
     quarantine_continue_failures = [
@@ -247,7 +317,11 @@ def validate_dataset(dataset_name, config, input_file_override=None):
         failure for failure in failed_rules if failure["severity"] == "warn_continue"
     ]
 
-    invalid_record_indexes = schema_invalid_indexes | duplicate_invalid_indexes
+    invalid_record_indexes = (
+        schema_invalid_indexes
+        | duplicate_invalid_indexes
+        | relationship_invalid_indexes
+    )
 
     if hard_failures:
         batch_status = "FAILED"
