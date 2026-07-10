@@ -263,6 +263,32 @@ def write_quarantine_file(dataset_name, records, invalid_record_indexes):
     return quarantine_path
 
 
+def write_validation_audit_log(dataset_name, report, report_path):
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    audit_log_path = REPORTS_DIR / "validation_audit_log.jsonl"
+
+    audit_record = {
+        "validation_run_at_utc": datetime.utcnow().isoformat() + "Z",
+        "dataset": dataset_name,
+        "contract_version": report["contract_version"],
+        "batch_status": report["batch_status"],
+        "pipeline_action": report["pipeline_action"],
+        "total_records": report["total_records"],
+        "valid_records": report["valid_records"],
+        "invalid_records": report["invalid_records"],
+        "warning_count": report["warning_count"],
+        "error_count_by_severity": report["error_count_by_severity"],
+        "report_file": str(report_path),
+        "quarantine_file": report["quarantine_file"],
+    }
+
+    with open(audit_log_path, "a", encoding="utf-8") as file:
+        file.write(json.dumps(audit_record) + "\n")
+
+    return audit_log_path
+
+
 def write_validation_report(dataset_name, report):
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -358,6 +384,7 @@ def validate_dataset(dataset_name, config, input_file_override=None):
     }
 
     report_path = write_validation_report(dataset_name, report)
+    audit_log_path = write_validation_audit_log(dataset_name, report, report_path)
 
     print(f"Dataset: {dataset_name}")
     print(f"Status: {batch_status}")
@@ -366,6 +393,7 @@ def validate_dataset(dataset_name, config, input_file_override=None):
     print(f"Invalid Records: {len(invalid_record_indexes)}")
     print(f"Warnings: {len(warn_continue_failures)}")
     print(f"Report: {report_path}")
+    print(f"Audit Log: {audit_log_path}")
 
     if quarantine_path:
         print(f"Quarantine File: {quarantine_path}")
