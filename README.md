@@ -462,6 +462,50 @@ data/quarantine/invalid_records/
 
 These files are ignored by Git because they are generated validation artifacts.
 
+
+### Referential Integrity Validation
+
+The validator also checks cross-dataset relationships before ingestion.
+
+Current relationship rule:
+
+```text
+chargeback_outcomes.dispute_id -> disputes.dispute_id
+```
+
+If a chargeback references a dispute that does not exist, the record is treated as a `quarantine_continue` issue.
+
+This is different from a `hard_fail`.
+
+A structurally broken record, such as a missing primary key or invalid data type, blocks the full batch. But an orphaned child record can be quarantined while allowing valid records to continue.
+
+Repeatable fixture:
+
+```text
+tests/fixtures/bad_chargeback_outcomes.json
+```
+
+Run the relationship failure test:
+
+```powershell
+python scripts/validate_data_contracts.py --dataset chargeback_outcomes --input-file tests\fixtures\bad_chargeback_outcomes.json
+```
+
+Expected result:
+
+```text
+Dataset: chargeback_outcomes
+Status: PASSED_WITH_QUARANTINE
+Pipeline Action: UPLOAD_VALID_RECORDS_ONLY
+Total Records: 2
+Invalid Records: 1
+Warnings: 0
+Validator exit code was 0
+```
+
+This proves the pipeline can quarantine an invalid child record, write a debuggable validation report, and continue loading valid records instead of blocking the entire batch.
+
+
 ### Repeatable Bad-Data Test
 
 A repeatable fixture proves the failure path:
