@@ -1,0 +1,2 @@
+{"transaction_id":"TXN_77777777","customer_id":"CUST_000500","account_id":"ACCT_000500","merchant_id":"MERCH_00323","transaction_amount":1165.48,"transaction_timestamp":"2026-12-31 00:00:00","transaction_status":"Approved","card_network":"Visa","merchant_category":"Online","country":"US"}
+{"transaction_id":"TXN_77777778","customer_id":"CUST_000500","account_id":"ACCT_000500","merchant_id":"MERCH_00323","transaction_amount":250.00,"transaction_timestamp":"2025-01-01 00:00:00","transaction_status":"Approved","card_network":"Visa","merchant_category":"Online","country":"US"}
