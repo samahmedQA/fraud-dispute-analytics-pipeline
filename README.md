@@ -737,6 +737,38 @@ The dbt option runs the transformation layer after local validation and partitio
 The current local orchestration flow does not yet upload newly generated files to S3 or reload Snowflake automatically. Those steps will be added in a later orchestration phase.
 
 
+
+### Local Orchestration Validation
+
+The local pipeline orchestration flow was tested successfully with:
+
+```powershell
+python scripts/run_pipeline.py --skip-generate --run-dbt
+```
+
+This command runs the pipeline in sequence:
+
+```text
+1. Validate raw data against versioned data contracts
+2. Partition valid raw data into the S3-style raw zone
+3. Run dbt transformations against the dev target
+4. Run dbt data quality tests
+```
+
+Successful dbt result:
+
+```text
+PASS=38
+WARN=0
+ERROR=0
+SKIP=0
+NO-OP=0
+TOTAL=38
+```
+
+This proves the project has an orchestration-ready local flow where data contracts act as a pre-ingestion quality gate before downstream transformation and testing.
+
+
 ## Current Status
 
 Completed:
