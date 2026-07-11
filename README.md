@@ -802,3 +802,47 @@ Next phases:
 ## Note
 
 This project uses fully synthetic data. It does not contain company data, customer data, production credentials, AWS policy files, Snowflake external IDs, or secrets.
+
+
+### Controlled Snowflake RAW Reload Strategy
+
+The project includes a controlled Snowflake RAW reload script:
+
+```text
+sql/load_raw_from_s3.sql
+```
+
+This script reloads the Snowflake RAW layer from the partitioned S3 raw zone.
+
+The reload strategy is intentionally full-refresh:
+
+```text
+1. TRUNCATE each RAW table
+2. COPY INTO each RAW table from the S3 external stage
+3. Rebuild downstream dbt models
+```
+
+This prevents duplicate RAW rows when the same S3 files are loaded more than once during development or demos.
+
+The script uses:
+
+```sql
+TRUNCATE TABLE RAW_TRANSACTIONS;
+
+COPY INTO RAW_TRANSACTIONS (raw_record)
+FROM (
+  SELECT $1
+  FROM @S3_RAW_STAGE/transactions/
+)
+FILE_FORMAT = (FORMAT_NAME = JSON_LINES_FORMAT)
+PATTERN = '.*[.]json'
+FORCE = TRUE
+ON_ERROR = 'ABORT_STATEMENT';
+```
+
+`FORCE = TRUE` is used for demo reloads so Snowflake can reload the same files after the RAW tables are truncated.
+
+This is different from an append-only production ingestion strategy. In a production design, the pipeline would typically use load metadata, file tracking, batch IDs, streams/tasks, Snowpipe, or merge logic to prevent duplicate ingestion.
+
+For this portfolio project, the controlled full reload is intentional because it provides a safe and repeatable development workflow.
+
