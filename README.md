@@ -700,6 +700,43 @@ Warnings: 0
 This proves the pipeline can detect invalid data, quarantine the bad record, write a debuggable validation report, return a failing exit code, and block ingestion before bad data reaches S3 or Snowflake.
 
 
+
+## Local Pipeline Orchestration
+
+The project includes a local orchestration script:
+
+```text
+scripts/run_pipeline.py
+```
+
+Run the local pipeline with:
+
+```powershell
+python scripts/run_pipeline.py
+```
+
+This executes the local pipeline in order:
+
+```text
+1. Generate synthetic raw JSON data
+2. Validate all raw datasets against versioned data contracts
+3. Stop the pipeline if validation hard-fails
+4. Partition valid raw data into the S3-style raw zone
+```
+
+The validation step acts as a pre-ingestion quality gate. If a dataset triggers a `hard_fail`, the pipeline stops before partitioning or downstream loading.
+
+Optional dbt build:
+
+```powershell
+python scripts/run_pipeline.py --run-dbt
+```
+
+The dbt option runs the transformation layer after local validation and partitioning.
+
+The current local orchestration flow does not yet upload newly generated files to S3 or reload Snowflake automatically. Those steps will be added in a later orchestration phase.
+
+
 ## Current Status
 
 Completed:
