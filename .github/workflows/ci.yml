@@ -1,0 +1,45 @@
+name: CI Pipeline Checks
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  pipeline-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile Python files
+        run: |
+          python -m compileall scripts
+          python -m compileall dashboards
+          python -m py_compile airflow/dags/fraud_dispute_pipeline_dag.py
+
+      - name: Generate synthetic data
+        run: |
+          python scripts/generate_data.py
+
+      - name: Validate data contracts
+        run: |
+          python scripts/validate_data_contracts.py
+
+      - name: Partition raw data for S3 layout
+        run: |
+          python scripts/partition_data_for_s3.py
