@@ -44,6 +44,23 @@ def main():
     )
 
     parser.add_argument(
+        "--upload-s3",
+        action="store_true",
+        help="Run the S3 upload step after partitioning.",
+    )
+
+    parser.add_argument(
+        "--s3-bucket",
+        help="Target S3 bucket for partitioned raw files.",
+    )
+
+    parser.add_argument(
+        "--execute-s3-upload",
+        action="store_true",
+        help="Actually upload files to S3. Without this flag, upload runs as dry run.",
+    )
+
+    parser.add_argument(
         "--dbt-target",
         default="dev",
         help="dbt target to use when --run-dbt is provided. Default: dev.",
@@ -68,6 +85,25 @@ def main():
         step_name="Partition raw data for S3",
         command=[sys.executable, "scripts/partition_data_for_s3.py"],
     )
+
+    if args.upload_s3:
+        if not args.s3_bucket:
+            raise SystemExit("--s3-bucket is required when using --upload-s3.")
+
+        s3_command = [
+            sys.executable,
+            "scripts/upload_partitioned_to_s3.py",
+            "--bucket",
+            args.s3_bucket,
+        ]
+
+        if args.execute_s3_upload:
+            s3_command.append("--execute")
+
+        run_step(
+            step_name="Upload partitioned raw files to S3",
+            command=s3_command,
+        )
 
     if args.run_dbt:
         run_step(
