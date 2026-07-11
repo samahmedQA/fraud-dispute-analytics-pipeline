@@ -10,10 +10,25 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def remove_sql_comments(sql_text):
+    cleaned_lines = []
+
+    for line in sql_text.splitlines():
+        stripped_line = line.strip()
+
+        if stripped_line.startswith("--"):
+            continue
+
+        cleaned_lines.append(line)
+
+    return "\n".join(cleaned_lines)
+
+
 def split_sql_statements(sql_text):
     statements = []
+    sql_without_comments = remove_sql_comments(sql_text)
 
-    for statement in sql_text.split(";"):
+    for statement in sql_without_comments.split(";"):
         cleaned_statement = statement.strip()
 
         if cleaned_statement:
