@@ -1,6 +1,10 @@
-@'
 -- Purpose:
 -- Reload Snowflake RAW tables from the partitioned AWS S3 raw zone.
+--
+-- Strategy:
+-- This is a controlled full reload.
+-- Each RAW table is truncated before COPY INTO runs.
+-- This prevents duplicate rows when the same S3 files are loaded again.
 --
 -- Flow:
 -- S3_RAW_STAGE
@@ -9,10 +13,6 @@
 --   -> RAW_FRAUD_SIGNALS
 --   -> RAW_DISPUTES
 --   -> RAW_CHARGEBACK_OUTCOMES
---
--- Note:
--- FORCE = TRUE is included so this script can be rerun during demos even if
--- Snowflake has already loaded the same files before.
 
 USE ROLE ACCOUNTADMIN;
 USE DATABASE FRAUD_DISPUTE_DB;
@@ -73,4 +73,3 @@ FILE_FORMAT = (FORMAT_NAME = JSON_LINES_FORMAT)
 PATTERN = '.*[.]json'
 FORCE = TRUE
 ON_ERROR = 'ABORT_STATEMENT';
-'@ | Set-Content sql\load_raw_from_s3.sql
