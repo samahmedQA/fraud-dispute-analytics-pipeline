@@ -804,6 +804,56 @@ Next phases:
 This project uses fully synthetic data. It does not contain company data, customer data, production credentials, AWS policy files, Snowflake external IDs, or secrets.
 
 
+
+### Snowflake SQL Runner
+
+The project includes a reusable Snowflake SQL runner:
+
+```text
+scripts/run_snowflake_sql.py
+```
+
+This script can run local SQL files against Snowflake, but it defaults to dry-run mode for safety.
+
+Dry-run command:
+
+```powershell
+python scripts/run_snowflake_sql.py --sql-file sql/load_raw_from_s3.sql
+```
+
+Dry-run mode previews the SQL statements without executing them. This is important because the RAW reload script contains destructive statements such as:
+
+```sql
+TRUNCATE TABLE RAW_TRANSACTIONS;
+```
+
+To actually execute the SQL file, add:
+
+```powershell
+--execute
+```
+
+Example execute command:
+
+```powershell
+python scripts/run_snowflake_sql.py --sql-file sql/load_raw_from_s3.sql --execute
+```
+
+The SQL runner is also wired into the local pipeline through:
+
+```powershell
+python scripts/run_pipeline.py --skip-generate --reload-snowflake
+```
+
+By default, this also runs as a dry run. To execute the Snowflake reload through the pipeline, use:
+
+```powershell
+python scripts/run_pipeline.py --skip-generate --reload-snowflake --execute-snowflake-reload
+```
+
+This makes the Snowflake RAW reload step scriptable while protecting against accidental table truncation.
+
+
 ### Controlled Snowflake RAW Reload Strategy
 
 The project includes a controlled Snowflake RAW reload script:
