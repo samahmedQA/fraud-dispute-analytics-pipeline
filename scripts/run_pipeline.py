@@ -61,6 +61,24 @@ def main():
     )
 
     parser.add_argument(
+        "--reload-snowflake",
+        action="store_true",
+        help="Run the Snowflake RAW reload SQL step after S3 upload or partitioning.",
+    )
+
+    parser.add_argument(
+        "--snowflake-reload-sql",
+        default="sql/load_raw_from_s3.sql",
+        help="SQL file used for Snowflake RAW reload. Default: sql/load_raw_from_s3.sql.",
+    )
+
+    parser.add_argument(
+        "--execute-snowflake-reload",
+        action="store_true",
+        help="Actually execute Snowflake reload SQL. Without this flag, reload runs as dry run.",
+    )
+
+    parser.add_argument(
         "--dbt-target",
         default="dev",
         help="dbt target to use when --run-dbt is provided. Default: dev.",
@@ -103,6 +121,22 @@ def main():
         run_step(
             step_name="Upload partitioned raw files to S3",
             command=s3_command,
+        )
+
+    if args.reload_snowflake:
+        snowflake_command = [
+            sys.executable,
+            "scripts/run_snowflake_sql.py",
+            "--sql-file",
+            args.snowflake_reload_sql,
+        ]
+
+        if args.execute_snowflake_reload:
+            snowflake_command.append("--execute")
+
+        run_step(
+            step_name="Reload Snowflake RAW tables from S3",
+            command=snowflake_command,
         )
 
     if args.run_dbt:
