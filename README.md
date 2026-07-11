@@ -769,6 +769,48 @@ TOTAL=38
 This proves the project has an orchestration-ready local flow where data contracts act as a pre-ingestion quality gate before downstream transformation and testing.
 
 
+
+### Airflow Orchestration DAG
+
+The project includes an Airflow DAG that represents the pipeline as separate orchestration tasks:
+
+```text
+airflow/dags/fraud_dispute_pipeline_dag.py
+```
+
+The DAG defines the following task flow:
+
+```text
+generate_synthetic_data
+? validate_data_contracts
+? partition_raw_data_for_s3
+? preview_s3_upload
+? preview_snowflake_raw_reload
+? run_dbt_build
+```
+
+This keeps orchestration separate from business logic. The individual project scripts still handle the actual work, while Airflow is responsible for ordering, scheduling, and task dependency management.
+
+The DAG uses safe defaults for external systems:
+
+```text
+S3 upload step: dry-run preview
+Snowflake RAW reload step: dry-run preview
+```
+
+This means the DAG can demonstrate production-style orchestration without accidentally uploading files to S3 or truncating Snowflake RAW tables.
+
+The DAG was syntax-validated locally with:
+
+```powershell
+python -m py_compile airflow\dags\fraud_dispute_pipeline_dag.py
+```
+
+Successful validation means the DAG file is structurally valid Python and ready to be used inside an Airflow environment.
+
+This adds an orchestration layer to the project and shows how the pipeline could be scheduled, monitored, retried, and managed in a production-style workflow.
+
+
 ## Current Status
 
 Completed:
