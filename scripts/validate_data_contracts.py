@@ -1,7 +1,7 @@
 import argparse
 import json
 from collections import Counter
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
@@ -269,7 +269,7 @@ def write_validation_audit_log(dataset_name, report, report_path):
     audit_log_path = REPORTS_DIR / "validation_audit_log.jsonl"
 
     audit_record = {
-        "validation_run_at_utc": datetime.utcnow().isoformat() + "Z",
+        "validation_run_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "dataset": dataset_name,
         "contract_version": report["contract_version"],
         "batch_status": report["batch_status"],
