@@ -811,6 +811,51 @@ Successful validation means the DAG file is structurally valid Python and ready 
 This adds an orchestration layer to the project and shows how the pipeline could be scheduled, monitored, retried, and managed in a production-style workflow.
 
 
+
+### GitHub Actions CI
+
+The project includes a GitHub Actions workflow for automated CI checks:
+
+```text
+.github/workflows/ci.yml
+```
+
+The workflow runs on:
+
+```text
+push to master
+pull request to master
+```
+
+The CI pipeline performs safe checks only. It does not connect to AWS or Snowflake.
+
+CI checks include:
+
+```text
+1. Checkout repository
+2. Set up Python 3.11
+3. Install project dependencies
+4. Compile Python files
+5. Validate Airflow DAG syntax
+6. Generate synthetic data
+7. Validate data contracts
+8. Partition raw data into the S3-style layout
+```
+
+This validates the core pipeline logic without requiring cloud credentials.
+
+The workflow intentionally avoids execution steps that could change external systems:
+
+```text
+No real S3 upload
+No Snowflake table truncation
+No Snowflake reload execution
+No dbt cloud/Snowflake dependency
+```
+
+This gives the project a safe CI/CD foundation and proves that the pipeline can be automatically checked whenever code changes.
+
+
 ## Current Status
 
 Completed:
