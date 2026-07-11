@@ -894,5 +894,59 @@ ON_ERROR = 'ABORT_STATEMENT';
 
 This is different from an append-only production ingestion strategy. In a production design, the pipeline would typically use load metadata, file tracking, batch IDs, streams/tasks, Snowpipe, or merge logic to prevent duplicate ingestion.
 
-For this portfolio project, the controlled full reload is intentional because it provides a safe and repeatable development workflow.
+### Full Local Orchestration Dry Run
 
+The full local orchestration flow was tested with:
+
+```powershell
+python scripts/run_pipeline.py --skip-generate --upload-s3 --s3-bucket fraud-dispute-analytics-sam-23402 --reload-snowflake --run-dbt
+
+For this portfolio project, the controlled full reload is intentional because it provides a safe and repeatable development workflow.
+### Full Local Orchestration Dry Run
+
+The full local orchestration flow was tested successfully with:
+
+```powershell
+python scripts/run_pipeline.py --skip-generate --upload-s3 --s3-bucket fraud-dispute-analytics-sam-23402 --reload-snowflake --run-dbt
+```
+
+This command runs the pipeline in sequence:
+
+```text
+1. Validate raw data against versioned data contracts
+2. Partition valid raw data into the S3-style raw zone
+3. Preview S3 upload using dry-run mode
+4. Preview Snowflake RAW reload using dry-run mode
+5. Run dbt build against the dev target
+```
+
+The S3 and Snowflake steps are protected by dry-run defaults.
+
+```text
+S3 upload: dry run
+Snowflake RAW reload: dry run
+```
+
+This means the pipeline previews external system changes without accidentally uploading files to S3 or truncating/reloading Snowflake RAW tables.
+
+Successful dbt result:
+
+```text
+PASS=38
+WARN=0
+ERROR=0
+SKIP=0
+NO-OP=0
+TOTAL=38
+```
+
+Successful orchestration result:
+
+```text
+Step completed successfully: Upload partitioned raw files to S3
+Step completed successfully: Reload Snowflake RAW tables from S3
+Step completed successfully: Run dbt build against target: dev
+Pipeline completed successfully.
+```
+
+This proves the project has an orchestration-ready local pipeline with validation gates, dry-run protection for external systems, and successful downstream dbt transformations and data quality tests.
