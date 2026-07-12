@@ -1,0 +1,121 @@
+{
+  "run_id": "20260712T033317Z_6f6e990f",
+  "pipeline_name": "fraud_dispute_analytics_pipeline",
+  "started_at_utc": "2026-07-12T03:33:17.471945Z",
+  "ended_at_utc": "2026-07-12T03:33:36.498201Z",
+  "duration_seconds": 19.03,
+  "status": "SUCCESS",
+  "failure_reason": null,
+  "command": "scripts\\run_pipeline.py --skip-generate --reload-snowflake",
+  "config": {
+    "skip_generate": true,
+    "upload_s3_requested": false,
+    "s3_upload_mode": "dry_run",
+    "s3_bucket": "your-s3-bucket-name",
+    "snowflake_reload_requested": true,
+    "snowflake_reload_mode": "dry_run",
+    "snowflake_reload_sql": "sql/load_raw_from_s3.sql",
+    "run_dbt_requested": false,
+    "dbt_target": "dev"
+  },
+  "steps": [
+    {
+      "step_name": "Validate data contracts",
+      "command": "<PROJECT_ROOT>\\.venv\\Scripts\\python.exe scripts/validate_data_contracts.py",
+      "started_at_utc": "2026-07-12T03:33:17.473079Z",
+      "ended_at_utc": "2026-07-12T03:33:22.885519Z",
+      "duration_seconds": 5.42,
+      "status": "SUCCESS",
+      "failure_reason": null
+    },
+    {
+      "step_name": "Partition raw data for S3",
+      "command": "<PROJECT_ROOT>\\.venv\\Scripts\\python.exe scripts/partition_data_for_s3.py",
+      "started_at_utc": "2026-07-12T03:33:22.885519Z",
+      "ended_at_utc": "2026-07-12T03:33:24.370572Z",
+      "duration_seconds": 1.48,
+      "status": "SUCCESS",
+      "failure_reason": null
+    },
+    {
+      "step_name": "Reload Snowflake RAW tables from S3",
+      "command": "<PROJECT_ROOT>\\.venv\\Scripts\\python.exe scripts/run_snowflake_sql.py --sql-file sql/load_raw_from_s3.sql",
+      "started_at_utc": "2026-07-12T03:33:24.371656Z",
+      "ended_at_utc": "2026-07-12T03:33:36.498201Z",
+      "duration_seconds": 12.13,
+      "status": "SUCCESS",
+      "failure_reason": null
+    }
+  ],
+  "validation_summary": {
+    "rows_received": 23540,
+    "rows_valid": 23540,
+    "rows_invalid": 0,
+    "rows_quarantined": 0,
+    "rows_rejected": 0,
+    "warnings": 0,
+    "datasets": [
+      {
+        "dataset": "chargeback_outcomes",
+        "status": "PASSED",
+        "pipeline_action": "UPLOAD_ALL_RECORDS",
+        "rows_received": 840,
+        "rows_valid": 840,
+        "rows_invalid": 0,
+        "rows_quarantined": 0,
+        "rows_rejected": 0,
+        "warnings": 0,
+        "report_file": "data\\validation_reports\\chargeback_outcomes_validation_report.json"
+      },
+      {
+        "dataset": "customers",
+        "status": "PASSED",
+        "pipeline_action": "UPLOAD_ALL_RECORDS",
+        "rows_received": 1500,
+        "rows_valid": 1500,
+        "rows_invalid": 0,
+        "rows_quarantined": 0,
+        "rows_rejected": 0,
+        "warnings": 0,
+        "report_file": "data\\validation_reports\\customers_validation_report.json"
+      },
+      {
+        "dataset": "disputes",
+        "status": "PASSED",
+        "pipeline_action": "UPLOAD_ALL_RECORDS",
+        "rows_received": 1200,
+        "rows_valid": 1200,
+        "rows_invalid": 0,
+        "rows_quarantined": 0,
+        "rows_rejected": 0,
+        "warnings": 0,
+        "report_file": "data\\validation_reports\\disputes_validation_report.json"
+      },
+      {
+        "dataset": "fraud_signals",
+        "status": "PASSED",
+        "pipeline_action": "UPLOAD_ALL_RECORDS",
+        "rows_received": 10000,
+        "rows_valid": 10000,
+        "rows_invalid": 0,
+        "rows_quarantined": 0,
+        "rows_rejected": 0,
+        "warnings": 0,
+        "report_file": "data\\validation_reports\\fraud_signals_validation_report.json"
+      },
+      {
+        "dataset": "transactions",
+        "status": "PASSED",
+        "pipeline_action": "UPLOAD_ALL_RECORDS",
+        "rows_received": 10000,
+        "rows_valid": 10000,
+        "rows_invalid": 0,
+        "rows_quarantined": 0,
+        "rows_rejected": 0,
+        "warnings": 0,
+        "report_file": "data\\validation_reports\\transactions_validation_report.json"
+      }
+    ]
+  },
+  "audit_file": "data\\pipeline_audit_logs\\pipeline_run_20260712T033317Z_6f6e990f.json"
+}
