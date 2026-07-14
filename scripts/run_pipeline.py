@@ -12,6 +12,7 @@ from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DBT_PROJECT_DIR = PROJECT_ROOT / "dbt" / "fraud_dispute_dbt"
 AUDIT_DIR = PROJECT_ROOT / "data" / "pipeline_audit_logs"
 VALIDATION_REPORTS_DIR = PROJECT_ROOT / "data" / "validation_reports"
 
@@ -177,6 +178,7 @@ def run_step(
     step_name: str,
     command: list[str],
     audit_record: dict[str, Any],
+    cwd=PROJECT_ROOT,
 ) -> None:
     print()
     print("=" * 80)
@@ -200,7 +202,7 @@ def run_step(
     audit_record["steps"].append(step_record)
 
     try:
-        subprocess.run(command, cwd=PROJECT_ROOT, check=True)
+        subprocess.run(command, cwd=cwd, check=True)
 
         step_record["status"] = "SUCCESS"
         print(f"Step completed successfully: {step_name}")
@@ -360,7 +362,8 @@ def main() -> None:
                     args.dbt_target,
                 ],
                 audit_record=audit_record,
-            )
+            cwd=DBT_PROJECT_DIR,
+        )
 
         audit_record["status"] = "SUCCESS"
         print()
