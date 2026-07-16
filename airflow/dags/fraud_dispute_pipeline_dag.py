@@ -11,12 +11,13 @@ from airflow.operators.python import PythonOperator
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DBT_PROJECT_DIR = PROJECT_ROOT / "dbt" / "fraud_dispute_dbt"
 
 S3_BUCKET = os.getenv("FRAUD_DISPUTE_S3_BUCKET", "fraud-dispute-analytics-sam-23402")
 DBT_TARGET = os.getenv("DBT_TARGET", "dev")
 
 
-def run_command(command: list[str]) -> None:
+def run_command(command: list[str], cwd: Path = PROJECT_ROOT) -> None:
     """
     Run a project command from the repository root.
 
@@ -24,11 +25,11 @@ def run_command(command: list[str]) -> None:
     project scripts handle the actual data engineering logic.
     """
     print(f"Running command: {' '.join(command)}")
-    print(f"Working directory: {PROJECT_ROOT}")
+    print(f"Working directory: {cwd}")
 
     subprocess.run(
         command,
-        cwd=PROJECT_ROOT,
+        cwd=cwd,
         check=True,
     )
 
@@ -76,7 +77,8 @@ def run_dbt_build() -> None:
             "build",
             "--target",
             DBT_TARGET,
-        ]
+        ],
+        cwd=DBT_PROJECT_DIR,
     )
 
 
