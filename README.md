@@ -65,23 +65,25 @@ This project simulates that workflow by creating trusted reporting tables for:
 ## Architecture
 
 flowchart TD
-    H["Airflow DAG"] -.->|"orchestrates"| A
+    A["Python Synthetic Data<br/>23,540 Records"]
+    B["Data Contracts<br/>Validation Gate"]
+    C["Partitioned S3 Raw Zone"]
+    D["Snowflake RAW<br/>External Stage + VARIANT JSON"]
+    E["dbt Models<br/>Bronze → Silver → Gold"]
+    F["Analytics Outputs<br/>Streamlit + Monitoring"]
+    G["Quarantine + Validation Reports<br/>hard_fail · quarantine_continue · warn_continue"]
+    I["GitHub Actions CI"]
+    J["Snowpipe POC"]
 
-    A["Python Synthetic Data\n23,540 Records"]
-    -->|"raw JSON"| B["Data Contracts\nValidation Gate"]
+    A -->|"raw JSON"| B
+    B -->|"validated records"| C
+    B -->|"invalid records"| G
+    C -->|"partitioned JSON"| D
+    D -->|"typed models"| E
+    E -->|"gold KPI marts"| F
 
-    B -->|"validated records"| C["Partitioned S3 Raw Zone"]
-    B -->|"invalid records"| G["Quarantine\nhard_fail · quarantine_continue · warn_continue"]
-
-    C -->|"partitioned JSON"| D["Snowflake RAW\nExternal Stage + VARIANT JSON"]
-
-    I["GitHub Actions CI"] -.->|"validates"| B
-    J["Snowpipe POC"] -.->|"event-driven test"| D
-
-    D -->|"typed models"| E["dbt Models\nBronze → Silver → Gold"]
-    -->|"gold KPI marts"| F["Analytics Outputs\nStreamlit + Monitoring"]
-
-    F -.->|"captures all stages"| K["Pipeline Audit Logs"]
+    I -. "validates" .-> B
+    J -. "event-driven test" .-> D
 
 The pipeline starts with synthetic fintech data generation, validates raw data through versioned contracts, partitions valid records into an S3-style raw zone, loads JSON into Snowflake RAW tables, and transforms the data through dbt bronze, silver, and gold models.
 
