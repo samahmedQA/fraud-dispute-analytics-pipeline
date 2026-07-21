@@ -1,52 +1,83 @@
 # Fraud & Dispute Analytics Pipeline
 
-## Overview
+## TL;DR
 
-This project is an end-to-end fintech analytics pipeline built with Python, AWS S3, Snowflake, Snowpipe, and dbt.
+End-to-end fintech data engineering project that simulates fraud, dispute, and chargeback analytics across **23,540 synthetic records**.  
+Built with **Python, AWS S3, Snowflake, dbt, Airflow, GitHub Actions, and Streamlit**.  
+Includes **data contracts, quarantine handling, audit logs, dbt tests, monitoring, Snowpipe POC, and safe dry-run controls** for external systems.
 
-It generates synthetic transaction, fraud signal, dispute, and chargeback data, organizes the raw files into partitioned S3-ready folders, uploads them to AWS S3, loads them into Snowflake RAW tables through an external stage, and transforms the data through dbt bronze, silver, and gold models.
+> This is a production-style portfolio project using fully synthetic data. It does not contain company data, customer data, credentials, or secrets.
 
-The project also includes manual S3 batch loading, a Snowpipe auto-ingest test, dbt data quality tests, pipeline row-count monitoring, and dbt documentation with lineage.
+---
+
+## Project Highlights
+
+- Generated **23,540 synthetic fintech records** across customers, transactions, fraud signals, disputes, and chargeback outcomes.
+- Designed an **S3-style partitioned raw zone** by dataset, year, and month.
+- Loaded semi-structured JSON into **Snowflake RAW tables** using external stage patterns.
+- Built **dbt bronze, silver, and gold models** for fraud, dispute, chargeback, and monitoring use cases.
+- Created business-ready marts for fraud KPIs, dispute trends, chargeback win/loss rates, and resolution timing.
+- Implemented **26 dbt data tests across 12 models** with a successful build result of `PASS=38, WARN=0, ERROR=0`.
+- Added **versioned JSON Schema data contracts** before ingestion.
+- Designed severity-based failure handling with:
+  - `hard_fail`
+  - `quarantine_continue`
+  - `warn_continue`
+- Added validation reports, quarantine outputs, validation audit logs, and full pipeline run audit logs.
+- Added an **Airflow DAG** to represent production-style orchestration.
+- Added **GitHub Actions CI** for safe automated checks.
+- Added a **Snowpipe auto-ingest proof of concept** for event-driven ingestion.
+
+---
 
 ## Business Problem
 
-A fintech company needs to monitor fraud risk, dispute volume, chargeback outcomes, win/loss rates, and pipeline health across card networks.
+A fintech company needs reliable analytics to monitor fraud risk, dispute volume, chargeback outcomes, win/loss rates, average resolution time, and pipeline health across card networks.
 
 This project simulates that workflow by creating trusted reporting tables for:
 
 - Fraud risk by card network
 - Daily fraud KPIs
 - Dispute and chargeback outcomes
-- Chargeback win rates
+- Chargeback win/loss rates
 - Average dispute resolution time
 - Pipeline row-count monitoring
 
+---
+
 ## Tech Stack
 
-- Python
-- AWS S3
-- Snowflake
-- Snowpipe
-- dbt
-- SQL
-- JSON
-- PowerShell
-- Git
+| Category | Tools |
+|---|---|
+| Language | Python, SQL |
+| Cloud Storage | AWS S3 |
+| Data Warehouse | Snowflake |
+| Ingestion | S3 batch loading, Snowpipe auto-ingest POC |
+| Transformation | dbt |
+| Orchestration | Airflow DAG, local pipeline runner |
+| CI/CD | GitHub Actions |
+| Dashboard | Streamlit |
+| Data Quality | JSON Schema contracts, dbt tests, validation reports |
+| Version Control | Git, GitHub |
 
-## Current Architecture
+---
+
+## Architecture
 
 ```text
 Python Synthetic Data Generator
         ↓
 Local JSON Files
         ↓
+Data Contracts / Validation Gate
+        ↓
+Quarantine + Validation Reports
+        ↓
 Partitioned Local Raw Zone
         ↓
 AWS S3 Raw Zone
         ↓
-Snowflake Storage Integration
-        ↓
-Snowflake External Stage
+Snowflake Storage Integration + External Stage
         ↓
 Snowflake RAW Tables
         ↓
@@ -56,14 +87,38 @@ dbt Silver Models
         ↓
 dbt Gold Marts
         ↓
-dbt Tests + Monitoring
+Monitoring Tables + Streamlit Dashboard
 ```
+
+Supporting components:
+
+```text
+Airflow DAG
+GitHub Actions CI
+Pipeline Audit Logs
+Snowpipe Auto-Ingest POC
+```
+
+---
+
+## Data Sources
+
+The project generates five synthetic datasets.
+
+| Dataset | Description | Records |
+|---|---|---:|
+| customers | Customer and account profile data | 1,500 |
+| transactions | Card transaction activity | 10,000 |
+| fraud_signals | Fraud scores, rules, device risk, and velocity signals | 10,000 |
+| disputes | Customer dispute records | 1,200 |
+| chargeback_outcomes | Chargeback outcomes, final amounts, and resolution dates | 840 |
+| **Total** |  | **23,540** |
+
+---
 
 ## S3 Raw Zone Layout
 
 Raw files are organized by dataset, year, and month.
-
-Example S3 layout:
 
 ```text
 raw/
@@ -81,21 +136,11 @@ raw/
 
 This layout supports cleaner backfills, dataset-level loading, and future automation.
 
-## Data Sources
-
-The project generates five synthetic datasets:
-
-| Dataset | Description |
-|---|---|
-| customers | Customer and account profile data |
-| transactions | Card transaction activity |
-| fraud_signals | Fraud scores, rules, device risk, and velocity signals |
-| disputes | Customer dispute records |
-| chargeback_outcomes | Chargeback outcomes, final amounts, and resolution dates |
+---
 
 ## Snowflake Layout
 
-The Snowflake database is organized into four schemas:
+The Snowflake database is organized into four schemas.
 
 | Schema | Purpose |
 |---|---|
@@ -104,18 +149,17 @@ The Snowflake database is organized into four schemas:
 | MARTS | Stores business-ready gold reporting tables |
 | MONITORING | Stores pipeline observability tables |
 
+---
 
 ## Environment Strategy
 
-The project supports environment separation between development and staging Snowflake targets.
-
-Current environments:
+The project supports separation between development and staging Snowflake targets.
 
 | Environment | Snowflake Database | Purpose |
 |---|---|---|
 | DEV | FRAUD_DISPUTE_DB | Primary development and experimentation environment |
-| STG | FRAUD_DISPUTE_STG | Clean staging validation environment used to prove the pipeline works outside development |
-| PROD | Planned template | Future protected production deployment pattern |
+| STG | FRAUD_DISPUTE_STG | Clean staging validation environment |
+| PROD | Planned template | Future protected deployment pattern |
 
 Each environment follows the same schema layout:
 
@@ -124,6 +168,10 @@ RAW
 STAGING
 MARTS
 MONITORING
+```
+
+---
+
 ## dbt Model Layers
 
 ### Bronze
@@ -132,11 +180,11 @@ Bronze models flatten raw JSON records into typed relational columns.
 
 Models:
 
-- br_customers
-- br_transactions
-- br_fraud_signals
-- br_disputes
-- br_chargeback_outcomes
+- `br_customers`
+- `br_transactions`
+- `br_fraud_signals`
+- `br_disputes`
+- `br_chargeback_outcomes`
 
 ### Silver
 
@@ -144,10 +192,10 @@ Silver models join and enrich the bronze data.
 
 Models:
 
-- silver_transactions_enriched
-- silver_dispute_outcomes
+- `silver_transactions_enriched`
+- `silver_dispute_outcomes`
 
-The silver transaction model joins transactions, customers, and fraud signals into one enriched transaction-level table. It also creates a high-risk transaction flag based on fraud score and risk level.
+The silver transaction model joins transactions, customers, and fraud signals into an enriched transaction-level table. It also creates a high-risk transaction flag based on fraud score and risk level.
 
 The silver dispute model joins disputes to enriched transactions and chargeback outcomes to create a clean dispute-level reporting table.
 
@@ -157,12 +205,14 @@ Gold models are business-ready marts for reporting and dashboards.
 
 Models:
 
-- gold_fraud_summary_by_network
-- gold_dispute_chargeback_summary_by_network
-- gold_daily_fraud_kpis
-- gold_daily_dispute_kpis
+- `gold_fraud_summary_by_network`
+- `gold_dispute_chargeback_summary_by_network`
+- `gold_daily_fraud_kpis`
+- `gold_daily_dispute_kpis`
 
 These marts support reporting on transaction volume, fraud risk, dispute volume, chargeback outcomes, win rates, and resolution timing.
+
+---
 
 ## Data Quality
 
@@ -173,34 +223,226 @@ The project includes dbt tests for:
 - Accepted values
 - Relationship integrity between transactions, disputes, and chargebacks
 
-The full dbt build currently passes successfully with:
+Current successful dbt build result:
 
 ```text
 PASS=38
 WARN=0
 ERROR=0
+SKIP=0
+NO-OP=0
 TOTAL=38
 ```
 
-## Monitoring
+---
 
-The monitoring model tracks row counts across RAW, SILVER, and GOLD layers.
+## Data Contracts and Failure Handling
 
-Model:
+The pipeline includes versioned JSON Schema contracts to validate raw source data before ingestion into AWS S3 and Snowflake.
 
-- monitoring_pipeline_row_counts
+Contract location:
 
-This table provides a lightweight observability check to confirm that key pipeline tables are populated after each dbt build.
+```text
+contracts/v1/
+```
 
-## S3 Ingestion Milestone
+Contracts exist for all five raw datasets:
+
+```text
+customers.schema.json
+transactions.schema.json
+fraud_signals.schema.json
+disputes.schema.json
+chargeback_outcomes.schema.json
+```
+
+These contracts enforce:
+
+- Required fields
+- Expected data types
+- Valid enum values
+- ID patterns
+- Date and timestamp formats
+- Numeric boundaries
+
+Validation command:
+
+```powershell
+python scripts/validate_data_contracts.py
+```
+
+---
+
+## Severity-Based Failure Design
+
+The project does not treat every data issue the same way. It uses severity tiers to decide how the pipeline should respond.
+
+| Severity | Example | Pipeline Behavior |
+|---|---|---|
+| `hard_fail` | Missing required field, wrong data type, invalid enum, duplicate primary key | Quarantine invalid records, write a validation report, mark batch as failed, and block S3 upload |
+| `quarantine_continue` | Structurally valid child record references a missing parent record | Quarantine invalid child records, write a validation report, and allow valid records to continue |
+| `warn_continue` | Late-arriving event or unusually old transaction date | Write a warning to the validation report and continue the pipeline |
+
+This proves the pipeline can distinguish between:
+
+- Structurally invalid data
+- Orphaned child records
+- Unusual but acceptable data
+
+---
+
+## Validation Reports and Quarantine Handling
+
+Validation reports are written to:
+
+```text
+data/validation_reports/
+```
+
+Invalid records are written to:
+
+```text
+data/quarantine/invalid_records/
+```
+
+Generated validation artifacts are ignored by Git.
+
+Each validation report captures:
+
+- Dataset name
+- Contract version
+- Batch status
+- Pipeline action
+- Total record count
+- Valid record count
+- Invalid record count
+- Warning count
+- Failed rule details
+- Severity for each failed rule
+- Quarantine file path, when applicable
+
+---
+
+## Validation Audit Logging
+
+Each validation run writes an audit record to:
+
+```text
+data/validation_reports/validation_audit_log.jsonl
+```
+
+Each audit record includes:
+
+- Validation timestamp in UTC
+- Dataset name
+- Contract version
+- Batch status
+- Pipeline action
+- Total records
+- Valid records
+- Invalid records
+- Warning count
+- Error counts by severity
+- Report file path
+- Quarantine file path
+
+This makes validation outcomes auditable before orchestration.
+
+---
+
+## Pipeline Audit Logging
+
+The local pipeline runner writes full pipeline audit logs to:
+
+```text
+data/pipeline_audit_logs/
+```
+
+Each pipeline audit record includes:
+
+- Pipeline run ID
+- Start and end timestamps
+- Runtime duration
+- Pipeline status
+- Failed step, when applicable
+- Failure reason, when applicable
+- Command used
+- Step-level execution results
+- Validation summary
+- S3, Snowflake, and dbt execution mode
+
+Generated pipeline audit logs are ignored by Git. Sanitized examples can be stored under:
+
+```text
+docs/sample_outputs/
+```
+
+---
+
+## Local Pipeline Orchestration
+
+The project includes a local orchestration script:
+
+```text
+scripts/run_pipeline.py
+```
+
+Run the local pipeline:
+
+```powershell
+python scripts/run_pipeline.py
+```
+
+This executes:
+
+```text
+Generate synthetic raw JSON data
+→ Validate raw data against versioned contracts
+→ Stop if validation hard-fails
+→ Partition valid data into the S3-style raw zone
+```
+
+Optional dbt build:
+
+```powershell
+python scripts/run_pipeline.py --run-dbt
+```
+
+Full safe dry-run workflow:
+
+```powershell
+python scripts/run_pipeline.py --skip-generate --upload-s3 --s3-bucket <your-bucket-name> --reload-snowflake --run-dbt
+```
+
+This runs:
+
+```text
+Validate raw data
+→ Partition raw data
+→ Preview S3 upload using dry-run mode
+→ Preview Snowflake RAW reload using dry-run mode
+→ Run dbt build
+→ Write pipeline audit log
+```
+
+The S3 and Snowflake steps are protected by dry-run defaults.
+
+| Step | Default Behavior | Execute Flag |
+|---|---|---|
+| S3 upload | Dry run | `--execute-s3-upload` |
+| Snowflake RAW reload | Dry run | `--execute-snowflake-reload` |
+
+---
+
+## S3 Ingestion
 
 The pipeline supports AWS S3-based ingestion.
 
-Completed S3 workflow:
+Completed workflow:
 
 ```text
 Local JSON files
-→ partitioned local raw zone
+→ Partitioned local raw zone
 → AWS S3 raw zone
 → Snowflake storage integration
 → Snowflake external stage
@@ -209,28 +451,83 @@ Local JSON files
 → dbt tests and monitoring
 ```
 
-The Snowflake RAW tables were successfully loaded from the S3 raw zone and validated with the following row counts:
+Expected RAW row counts after loading:
+
+| Table | Expected Rows |
+|---|---:|
+| RAW_CUSTOMERS | 1,500 |
+| RAW_TRANSACTIONS | 10,000 |
+| RAW_FRAUD_SIGNALS | 10,000 |
+| RAW_DISPUTES | 1,200 |
+| RAW_CHARGEBACK_OUTCOMES | 840 |
+
+---
+
+## Snowflake SQL Runner
+
+The project includes a reusable Snowflake SQL runner:
 
 ```text
-RAW_CUSTOMERS              1500
-RAW_TRANSACTIONS           10000
-RAW_FRAUD_SIGNALS          10000
-RAW_DISPUTES               1200
-RAW_CHARGEBACK_OUTCOMES    840
+scripts/run_snowflake_sql.py
 ```
 
-The full dbt build passed successfully after loading from S3:
+Dry-run command:
+
+```powershell
+python scripts/run_snowflake_sql.py --sql-file sql/load_raw_from_s3.sql
+```
+
+Dry-run mode previews SQL statements without executing them. This is important because the RAW reload script contains destructive statements such as:
+
+```sql
+TRUNCATE TABLE RAW_TRANSACTIONS;
+```
+
+Execute command:
+
+```powershell
+python scripts/run_snowflake_sql.py --sql-file sql/load_raw_from_s3.sql --execute
+```
+
+The SQL runner is also wired into the local pipeline:
+
+```powershell
+python scripts/run_pipeline.py --skip-generate --reload-snowflake
+```
+
+To execute the Snowflake reload through the pipeline:
+
+```powershell
+python scripts/run_pipeline.py --skip-generate --reload-snowflake --execute-snowflake-reload
+```
+
+---
+
+## Controlled Snowflake RAW Reload Strategy
+
+The project includes a controlled Snowflake RAW reload script:
 
 ```text
-PASS=38
-WARN=0
-ERROR=0
-TOTAL=38
+sql/load_raw_from_s3.sql
 ```
 
-## Snowpipe Auto-Ingest Milestone
+The reload strategy is intentionally full-refresh for development and demo repeatability.
 
-The project also includes a Snowpipe auto-ingest test flow.
+```text
+TRUNCATE each RAW table
+→ COPY INTO each RAW table from the S3 external stage
+→ Rebuild downstream dbt models
+```
+
+This prevents duplicate RAW rows when the same S3 files are loaded more than once during development or demos.
+
+This is different from an append-only production ingestion strategy. In production, the pipeline would typically use load metadata, file tracking, batch IDs, streams/tasks, Snowpipe, or MERGE logic to prevent duplicate ingestion.
+
+---
+
+## Snowpipe Auto-Ingest Proof of Concept
+
+The project includes a Snowpipe auto-ingest test flow.
 
 Snowpipe test workflow:
 
@@ -239,32 +536,144 @@ New JSON file uploaded to S3
 → S3 object-created event notification
 → Snowflake Snowpipe notification channel
 → Snowpipe COPY INTO execution
-→ test RAW table populated automatically
+→ Test RAW table populated automatically
 ```
 
 Test objects:
 
 | Object | Purpose |
 |---|---|
-| RAW_TRANSACTIONS_PIPE_TEST | Test table used to validate Snowpipe loading |
-| PIPE_TRANSACTIONS_SNOWPIPE_TEST | Snowpipe object configured with AUTO_INGEST = TRUE |
-| raw/snowpipe_test/transactions/ | S3 test prefix used for Snowpipe event notifications |
-
-The Snowpipe test successfully loaded a new transaction JSON file from S3 into Snowflake automatically.
+| `RAW_TRANSACTIONS_PIPE_TEST` | Test table used to validate Snowpipe loading |
+| `PIPE_TRANSACTIONS_SNOWPIPE_TEST` | Snowpipe object configured with `AUTO_INGEST = TRUE` |
+| `raw/snowpipe_test/transactions/` | S3 test prefix used for Snowpipe event notifications |
 
 This validates an event-driven ingestion pattern in addition to the manual S3 batch load process.
 
+---
+
+## Airflow Orchestration DAG
+
+The project includes an Airflow DAG:
+
+```text
+airflow/dags/fraud_dispute_pipeline_dag.py
+```
+
+Task flow:
+
+```text
+generate_synthetic_data
+→ validate_data_contracts
+→ partition_raw_data_for_s3
+→ preview_s3_upload
+→ preview_snowflake_raw_reload
+→ run_dbt_build
+```
+
+The DAG keeps orchestration separate from business logic. Individual project scripts handle the work, while Airflow is responsible for task ordering and dependency management.
+
+The DAG uses safe defaults:
+
+```text
+S3 upload step: dry-run preview
+Snowflake RAW reload step: dry-run preview
+```
+
+Syntax validation:
+
+```powershell
+python -m py_compile airflow\dags\fraud_dispute_pipeline_dag.py
+```
+
+---
+
+## GitHub Actions CI
+
+The project includes a GitHub Actions workflow:
+
+```text
+.github/workflows/ci.yml
+```
+
+The CI pipeline performs safe checks only. It does not connect to AWS or Snowflake.
+
+CI checks include:
+
+```text
+Checkout repository
+→ Set up Python
+→ Install dependencies
+→ Compile Python files
+→ Validate Airflow DAG syntax
+→ Generate synthetic data
+→ Validate data contracts
+→ Partition raw data into the S3-style layout
+```
+
+The workflow intentionally avoids execution steps that could change external systems:
+
+```text
+No real S3 upload
+No Snowflake table truncation
+No Snowflake reload execution
+No cloud credential dependency
+```
+
+---
+
+## Monitoring
+
+The monitoring model tracks row counts across RAW, SILVER, and GOLD layers.
+
+Model:
+
+```text
+monitoring_pipeline_row_counts
+```
+
+This table provides a lightweight observability check to confirm that key pipeline tables are populated after each dbt build.
+
+---
+
+## Streamlit Dashboard
+
+The project includes a Streamlit dashboard for exploring the gold marts and monitoring outputs.
+
+Dashboard location:
+
+```text
+dashboards/streamlit_app.py
+```
+
+The dashboard is designed to show:
+
+- Fraud KPIs by card network
+- Daily fraud trends
+- Dispute and chargeback KPIs
+- Chargeback win/loss outcomes
+- Pipeline row-count monitoring
+
+Run command:
+
+```powershell
+streamlit run dashboards\streamlit_app.py
+```
+
+---
+
 ## SQL Scripts
 
-The `sql/` folder includes reusable Snowflake scripts:
+The `sql/` folder includes reusable Snowflake scripts.
 
 | Script | Purpose |
 |---|---|
-| snowflake_setup.sql | Creates core Snowflake database objects |
-| setup_s3_stage_template.sql | Safe template for creating a Snowflake storage integration and S3 external stage |
-| load_raw_from_s3.sql | Reloads RAW tables from the S3 raw zone |
-| validate_raw_counts.sql | Validates RAW table row counts after loading |
-| setup_snowpipe_template.sql | Safe template for testing Snowpipe auto-ingest |
+| `snowflake_setup.sql` | Creates core Snowflake database objects |
+| `setup_s3_stage_template.sql` | Safe template for creating a Snowflake storage integration and S3 external stage |
+| `load_raw_from_s3.sql` | Reloads RAW tables from the S3 raw zone |
+| `validate_raw_counts.sql` | Validates RAW table row counts after loading |
+| `setup_snowpipe_template.sql` | Safe template for testing Snowpipe auto-ingest |
+
+---
 
 ## How to Run
 
@@ -274,61 +683,49 @@ The `sql/` folder includes reusable Snowflake scripts:
 python -m pip install -r requirements.txt
 ```
 
-### 2. Generate synthetic data
+### 2. Configure environment variables
+
+Create a local `.env` file from the example file.
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Update `.env` with your local Snowflake and AWS settings.
+
+Do not commit `.env`.
+
+### 3. Generate synthetic data
 
 ```powershell
 python scripts\generate_data.py
 ```
 
-### 3. Partition files for S3
+### 4. Validate data contracts
+
+```powershell
+python scripts\validate_data_contracts.py
+```
+
+### 5. Partition files for S3
 
 ```powershell
 python scripts\partition_data_for_s3.py
 ```
 
-### 4. Upload partitioned files to S3
+### 6. Preview S3 upload
 
 ```powershell
-aws s3 cp data/s3_partitioned/raw/ s3://<bucket-name>/raw/ --recursive
+python scripts\upload_partitioned_to_s3.py --bucket <your-bucket-name>
 ```
 
-### 5. Set up Snowflake S3 stage
+### 7. Run full safe local pipeline
 
-Use this safe template:
-
-```text
-sql/setup_s3_stage_template.sql
+```powershell
+python scripts\run_pipeline.py --skip-generate --upload-s3 --s3-bucket <your-bucket-name> --reload-snowflake --run-dbt
 ```
 
-This creates the Snowflake storage integration, file format, and external stage.
-
-### 6. Load RAW tables from S3
-
-Run this Snowflake script:
-
-```text
-sql/load_raw_from_s3.sql
-```
-
-### 7. Validate RAW row counts
-
-Run this Snowflake script:
-
-```text
-sql/validate_raw_counts.sql
-```
-
-Expected row counts:
-
-```text
-RAW_CUSTOMERS              1500
-RAW_TRANSACTIONS           10000
-RAW_FRAUD_SIGNALS          10000
-RAW_DISPUTES               1200
-RAW_CHARGEBACK_OUTCOMES    840
-```
-
-### 8. Run dbt build
+### 8. Run dbt build directly
 
 ```powershell
 cd dbt\fraud_dispute_dbt
@@ -342,519 +739,7 @@ python -c "from dbt.cli.main import cli; cli()" docs generate
 python -c "from dbt.cli.main import cli; cli()" docs serve
 ```
 
-### 10. Test Snowpipe auto-ingest
-
-Use this safe template:
-
-```text
-sql/setup_snowpipe_template.sql
-```
-
-The Snowpipe test uses a separate test table and test S3 prefix so it does not affect the main RAW tables.
-
-
-## Data Contracts and Failure Handling
-
-The pipeline includes versioned data contracts to validate raw source data before ingestion into AWS S3 and Snowflake.
-
-Current contract version:
-
-```text
-contracts/v1/
-```
-
-The pipeline now includes versioned contracts for all five raw datasets:
-
-```text
-contracts/v1/customers.schema.json
-contracts/v1/transactions.schema.json
-contracts/v1/fraud_signals.schema.json
-contracts/v1/disputes.schema.json
-contracts/v1/chargeback_outcomes.schema.json
-```
-
-These contracts enforce required fields, expected data types, valid enum values, ID patterns, date/timestamp formats, and numeric boundaries before raw data is allowed to continue toward S3 ingestion.
-
-Validation is performed before S3 upload using:
-
-```powershell
-python scripts/validate_data_contracts.py
-```
-
-Current full validation result:
-
-```text
-Dataset: chargeback_outcomes
-Status: PASSED
-Total Records: 840
-Invalid Records: 0
-
-Dataset: customers
-Status: PASSED
-Total Records: 1500
-Invalid Records: 0
-
-Dataset: disputes
-Status: PASSED
-Total Records: 1200
-Invalid Records: 0
-
-Dataset: fraud_signals
-Status: PASSED
-Total Records: 10000
-Invalid Records: 0
-
-Dataset: transactions
-Status: PASSED
-Total Records: 10000
-Invalid Records: 0
-
-Validator exit code was 0
-```
-
-### Severity-Based Failure Design
-
-The project does not treat every data issue the same way. It uses severity tiers to decide how the pipeline should respond when data is wrong.
-
-| Severity | Example | Pipeline Behavior |
-|---|---|---|
-| hard_fail | Missing required field, wrong data type, invalid enum value, duplicate primary key | Quarantine invalid records, write a validation report, mark batch as FAILED, and block S3 upload |
-| quarantine_continue | Invalid child record, such as a chargeback referencing a missing dispute | Quarantine the invalid child records, write a validation report, and allow valid records to continue |
-| warn_continue | Late-arriving event or unusually old transaction date | Write a warning to the validation report and continue the pipeline |
-
-For structural contract violations, the project uses a strict batch-level hard-fail policy. If any transaction record has a `hard_fail`, the entire dataset batch is blocked from S3 upload. This is intentional because structural issues may indicate the upstream source or generator is broken, not just one isolated record.
-
-### Validation Audit Logging
-
-Each validation run writes an audit record to:
-
-```text
-data/validation_reports/validation_audit_log.jsonl
-```
-
-The audit log is generated as newline-delimited JSON, which makes each validation event easy to review, query, or load into a monitoring table later.
-
-Each audit record includes:
-
-- Validation run timestamp in UTC
-- Dataset name
-- Contract version
-- Batch status
-- Pipeline action
-- Total record count
-- Valid record count
-- Invalid record count
-- Warning count
-- Severity counts
-- Validation report path
-- Quarantine file path, when applicable
-
-Example audit record:
-
-```json
-{
-  "validation_run_at_utc": "2026-07-10T17:41:32.819890Z",
-  "dataset": "transactions",
-  "contract_version": "v1",
-  "batch_status": "PASSED",
-  "pipeline_action": "UPLOAD_ALL_RECORDS",
-  "total_records": 10000,
-  "valid_records": 10000,
-  "invalid_records": 0,
-  "warning_count": 0,
-  "error_count_by_severity": {},
-  "report_file": "data/validation_reports/transactions_validation_report.json",
-  "quarantine_file": null
-}
-```
-
-This makes the validation layer auditable before orchestration. A future Airflow DAG or CI/CD workflow can use this audit log to track validation outcomes across pipeline runs.
-
-### Validation Report
-
-Each validation run writes a detailed report to:
-
-```text
-data/validation_reports/
-```
-
-The report includes:
-
-- Dataset name
-- Contract version
-- Batch status
-- Pipeline action
-- Total record count
-- Valid record count
-- Invalid record count
-- Warning count
-- Failed rule details
-- Severity for each failed rule
-
-Example failed rule output:
-
-```text
-transactions  TXN_99999999  card_network        enum  hard_fail  'Discover' is not one of ['Mastercard', 'Pulse', 'Visa']
-transactions  TXN_99999999  transaction_amount  type  hard_fail  'one hundred' is not of type 'number'
-```
-
-### Quarantine Handling
-
-Invalid records are written to:
-
-```text
-data/quarantine/invalid_records/
-```
-
-These files are ignored by Git because they are generated validation artifacts.
-
-
-### Referential Integrity Validation
-
-The validator also checks cross-dataset relationships before ingestion.
-
-Current relationship rule:
-
-```text
-chargeback_outcomes.dispute_id -> disputes.dispute_id
-```
-
-If a chargeback references a dispute that does not exist, the record is treated as a `quarantine_continue` issue.
-
-This is different from a `hard_fail`.
-
-A structurally broken record, such as a missing primary key or invalid data type, blocks the full batch. But an orphaned child record can be quarantined while allowing valid records to continue.
-
-Repeatable fixture:
-
-```text
-tests/fixtures/bad_chargeback_outcomes.json
-```
-
-Run the relationship failure test:
-
-```powershell
-python scripts/validate_data_contracts.py --dataset chargeback_outcomes --input-file tests\fixtures\bad_chargeback_outcomes.json
-```
-
-Expected result:
-
-```text
-Dataset: chargeback_outcomes
-Status: PASSED_WITH_QUARANTINE
-Pipeline Action: UPLOAD_VALID_RECORDS_ONLY
-Total Records: 2
-Invalid Records: 1
-Warnings: 0
-Validator exit code was 0
-```
-
-This proves the pipeline can quarantine an invalid child record, write a debuggable validation report, and continue loading valid records instead of blocking the entire batch.
-
-### Severity Tier Proof
-
-The data contract validator proves three different severity tiers instead of treating every data issue the same way.
-
-| Severity | Example | Status | Pipeline Action | Exit Code |
-|---|---|---|---|---|
-| `hard_fail` | Wrong data type, invalid enum, missing required field, duplicate primary key | `FAILED` | `BLOCK_S3_UPLOAD` | `1` |
-| `quarantine_continue` | Chargeback references a dispute ID that does not exist | `PASSED_WITH_QUARANTINE` | `UPLOAD_VALID_RECORDS_ONLY` | `0` |
-| `warn_continue` | Late-arriving transaction event | `PASSED_WITH_WARNINGS` | `UPLOAD_ALL_RECORDS` | `0` |
-
-This proves the pipeline can distinguish between:
-
-```text
-structurally invalid data
-orphaned child records
-unusual but acceptable late-arriving data
-```
-
-#### hard_fail proof
-
-The `hard_fail` tier is used when a record has a structural contract violation, such as a wrong data type or invalid enum value.
-
-Fixture:
-
-```text
-tests/fixtures/bad_transactions.json
-```
-
-Run:
-
-```powershell
-python scripts/validate_data_contracts.py --dataset transactions --input-file tests\fixtures\bad_transactions.json
-```
-
-Expected result:
-
-```text
-Dataset: transactions
-Status: FAILED
-Pipeline Action: BLOCK_S3_UPLOAD
-Total Records: 2
-Invalid Records: 1
-Warnings: 0
-Validator exit code was 1
-```
-
-This blocks S3 upload because a structural contract issue may indicate that the upstream source or generator is broken.
-
-#### quarantine_continue proof
-
-The `quarantine_continue` tier is used when a child record is structurally valid but fails a relationship check.
-
-Current relationship rule:
-
-```text
-chargeback_outcomes.dispute_id -> disputes.dispute_id
-```
-
-Fixture:
-
-```text
-tests/fixtures/bad_chargeback_outcomes.json
-```
-
-Run:
-
-```powershell
-python scripts/validate_data_contracts.py --dataset chargeback_outcomes --input-file tests\fixtures\bad_chargeback_outcomes.json
-```
-
-Expected result:
-
-```text
-Dataset: chargeback_outcomes
-Status: PASSED_WITH_QUARANTINE
-Pipeline Action: UPLOAD_VALID_RECORDS_ONLY
-Total Records: 2
-Invalid Records: 1
-Warnings: 0
-Validator exit code was 0
-```
-
-This quarantines the invalid child record while allowing valid records to continue.
-
-#### warn_continue proof
-
-The `warn_continue` tier is used when data is unusual but not necessarily corrupt.
-
-Example:
-
-```text
-late-arriving transaction event
-```
-
-Fixture:
-
-```text
-tests/fixtures/warn_transactions.json
-```
-
-Run:
-
-```powershell
-python scripts\validate_data_contracts.py --dataset transactions --input-file tests\fixtures\warn_transactions.json
-```
-
-Expected result:
-
-```text
-Dataset: transactions
-Status: PASSED_WITH_WARNINGS
-Pipeline Action: UPLOAD_ALL_RECORDS
-Total Records: 2
-Invalid Records: 0
-Warnings: 1
-Validator exit code was 0
-```
-
-This writes a warning to the validation report but does not block or quarantine the record.
-
-Together, these fixtures prove that the pipeline does more than validate schema. It designs and enforces different failure paths based on the severity and blast radius of the data issue.
-### Repeatable Bad-Data Test
-
-A repeatable fixture proves the failure path:
-
-```text
-tests/fixtures/bad_transactions.json
-```
-
-Run the failure test with:
-
-```powershell
-python scripts/validate_data_contracts.py --dataset transactions --input-file tests\fixtures\bad_transactions.json
-```
-
-Expected result:
-
-```text
-Dataset: transactions
-Status: FAILED
-Pipeline Action: BLOCK_S3_UPLOAD
-Total Records: 2
-Invalid Records: 1
-Warnings: 0
-```
-
-This proves the pipeline can detect invalid data, quarantine the bad record, write a debuggable validation report, return a failing exit code, and block ingestion before bad data reaches S3 or Snowflake.
-
-
-
-## Local Pipeline Orchestration
-
-The project includes a local orchestration script:
-
-```text
-scripts/run_pipeline.py
-```
-
-Run the local pipeline with:
-
-```powershell
-python scripts/run_pipeline.py
-```
-
-This executes the local pipeline in order:
-
-```text
-1. Generate synthetic raw JSON data
-2. Validate all raw datasets against versioned data contracts
-3. Stop the pipeline if validation hard-fails
-4. Partition valid raw data into the S3-style raw zone
-```
-
-The validation step acts as a pre-ingestion quality gate. If a dataset triggers a `hard_fail`, the pipeline stops before partitioning or downstream loading.
-
-Optional dbt build:
-
-```powershell
-python scripts/run_pipeline.py --run-dbt
-```
-
-The dbt option runs the transformation layer after local validation and partitioning.
-
-The current local orchestration flow does not yet upload newly generated files to S3 or reload Snowflake automatically. Those steps will be added in a later orchestration phase.
-
-
-
-### Local Orchestration Validation
-
-The local pipeline orchestration flow was tested successfully with:
-
-```powershell
-python scripts/run_pipeline.py --skip-generate --run-dbt
-```
-
-This command runs the pipeline in sequence:
-
-```text
-1. Validate raw data against versioned data contracts
-2. Partition valid raw data into the S3-style raw zone
-3. Run dbt transformations against the dev target
-4. Run dbt data quality tests
-```
-
-Successful dbt result:
-
-```text
-PASS=38
-WARN=0
-ERROR=0
-SKIP=0
-NO-OP=0
-TOTAL=38
-```
-
-This proves the project has an orchestration-ready local flow where data contracts act as a pre-ingestion quality gate before downstream transformation and testing.
-
-
-
-### Airflow Orchestration DAG
-
-The project includes an Airflow DAG that represents the pipeline as separate orchestration tasks:
-
-```text
-airflow/dags/fraud_dispute_pipeline_dag.py
-```
-
-The DAG defines the following task flow:
-
-```text
-generate_synthetic_data
-? validate_data_contracts
-? partition_raw_data_for_s3
-? preview_s3_upload
-? preview_snowflake_raw_reload
-? run_dbt_build
-```
-
-This keeps orchestration separate from business logic. The individual project scripts still handle the actual work, while Airflow is responsible for ordering, scheduling, and task dependency management.
-
-The DAG uses safe defaults for external systems:
-
-```text
-S3 upload step: dry-run preview
-Snowflake RAW reload step: dry-run preview
-```
-
-This means the DAG can demonstrate production-style orchestration without accidentally uploading files to S3 or truncating Snowflake RAW tables.
-
-The DAG was syntax-validated locally with:
-
-```powershell
-python -m py_compile airflow\dags\fraud_dispute_pipeline_dag.py
-```
-
-Successful validation means the DAG file is structurally valid Python and ready to be used inside an Airflow environment.
-
-This adds an orchestration layer to the project and shows how the pipeline could be scheduled, monitored, retried, and managed in a production-style workflow.
-
-
-
-### GitHub Actions CI
-
-The project includes a GitHub Actions workflow for automated CI checks:
-
-```text
-.github/workflows/ci.yml
-```
-
-The workflow runs on:
-
-```text
-push to master
-pull request to master
-```
-
-The CI pipeline performs safe checks only. It does not connect to AWS or Snowflake.
-
-CI checks include:
-
-```text
-1. Checkout repository
-2. Set up Python 3.11
-3. Install project dependencies
-4. Compile Python files
-5. Validate Airflow DAG syntax
-6. Generate synthetic data
-7. Validate data contracts
-8. Partition raw data into the S3-style layout
-```
-
-This validates the core pipeline logic without requiring cloud credentials.
-
-The workflow intentionally avoids execution steps that could change external systems:
-
-```text
-No real S3 upload
-No Snowflake table truncation
-No Snowflake reload execution
-No dbt cloud/Snowflake dependency
-```
-
-This gives the project a safe CI/CD foundation and proves that the pipeline can be automatically checked whenever code changes.
-
+---
 
 ## Current Status
 
@@ -862,178 +747,67 @@ Completed:
 
 - Synthetic fintech data generation
 - Local JSON raw file generation
-- S3 partitioning script
-- AWS S3 raw zone upload
-- Snowflake storage integration
-- Snowflake external stage
+- Versioned JSON Schema data contracts
+- Severity-based validation failure handling
+- Validation reports and quarantine handling
+- Validation audit logging
+- S3-style partitioning script
+- AWS S3 raw zone dry-run upload validation
+- Snowflake storage integration and external stage templates
 - Snowflake RAW JSON loading from S3
-- Snowpipe auto-ingest test
+- Controlled Snowflake RAW reload script
+- Reusable Snowflake SQL runner
+- Snowpipe auto-ingest proof of concept
 - dbt bronze models
 - dbt silver enrichment models
 - dbt gold KPI marts
 - dbt data quality tests
 - Pipeline row-count monitoring
-- dbt documentation and lineage
-- Full dbt build passing successfully after S3 ingestion
+- Pipeline run audit logging
+- Airflow DAG orchestration
+- GitHub Actions CI
+- Streamlit dashboard
+- Full dbt build passing successfully
+
+---
 
 ## Planned Improvements
 
 Next phases:
 
+- Add visual architecture diagram to README
+- Add screenshots for:
+  - Streamlit dashboard
+  - dbt build result
+  - GitHub Actions passing
+  - Pipeline audit log
+  - Snowflake schemas and marts
+- Add Terraform templates for AWS and Snowflake infrastructure
 - Expand Snowpipe from a test prefix to full dataset ingestion
-- Add dashboard layer
-- Add GitHub Actions CI/CD
-- Add screenshots to README
+- Add file-level load tracking and batch IDs
+- Add alerting for data freshness, volume anomalies, and failed pipeline runs
 - Add more advanced monitoring and drift checks
+- Record a short project walkthrough video
 
-## Note
+---
 
-This project uses fully synthetic data. It does not contain company data, customer data, production credentials, AWS policy files, Snowflake external IDs, or secrets.
+## Production Hardening Roadmap
 
+To harden this further for production deployment, future improvements would include:
 
+- Terraform-managed AWS and Snowflake infrastructure
+- Secrets Manager or environment-based secret management
+- Incremental dbt models instead of full rebuilds
+- File-level load tracking and batch IDs
+- Expanded Snowpipe ingestion across all datasets
+- Data freshness and volume anomaly checks
+- Alerting through Slack, email, or Datadog
+- Airflow retries, SLAs, and failure notifications
+- Role-based Snowflake permissions
+- CI checks with unit tests and fixture-based validation tests
 
-### Snowflake SQL Runner
+---
 
-The project includes a reusable Snowflake SQL runner:
+## Resume Summary
 
-```text
-scripts/run_snowflake_sql.py
-```
-
-This script can run local SQL files against Snowflake, but it defaults to dry-run mode for safety.
-
-Dry-run command:
-
-```powershell
-python scripts/run_snowflake_sql.py --sql-file sql/load_raw_from_s3.sql
-```
-
-Dry-run mode previews the SQL statements without executing them. This is important because the RAW reload script contains destructive statements such as:
-
-```sql
-TRUNCATE TABLE RAW_TRANSACTIONS;
-```
-
-To actually execute the SQL file, add:
-
-```powershell
---execute
-```
-
-Example execute command:
-
-```powershell
-python scripts/run_snowflake_sql.py --sql-file sql/load_raw_from_s3.sql --execute
-```
-
-The SQL runner is also wired into the local pipeline through:
-
-```powershell
-python scripts/run_pipeline.py --skip-generate --reload-snowflake
-```
-
-By default, this also runs as a dry run. To execute the Snowflake reload through the pipeline, use:
-
-```powershell
-python scripts/run_pipeline.py --skip-generate --reload-snowflake --execute-snowflake-reload
-```
-
-This makes the Snowflake RAW reload step scriptable while protecting against accidental table truncation.
-
-
-### Controlled Snowflake RAW Reload Strategy
-
-The project includes a controlled Snowflake RAW reload script:
-
-```text
-sql/load_raw_from_s3.sql
-```
-
-This script reloads the Snowflake RAW layer from the partitioned S3 raw zone.
-
-The reload strategy is intentionally full-refresh:
-
-```text
-1. TRUNCATE each RAW table
-2. COPY INTO each RAW table from the S3 external stage
-3. Rebuild downstream dbt models
-```
-
-This prevents duplicate RAW rows when the same S3 files are loaded more than once during development or demos.
-
-The script uses:
-
-```sql
-TRUNCATE TABLE RAW_TRANSACTIONS;
-
-COPY INTO RAW_TRANSACTIONS (raw_record)
-FROM (
-  SELECT $1
-  FROM @S3_RAW_STAGE/transactions/
-)
-FILE_FORMAT = (FORMAT_NAME = JSON_LINES_FORMAT)
-PATTERN = '.*[.]json'
-FORCE = TRUE
-ON_ERROR = 'ABORT_STATEMENT';
-```
-
-`FORCE = TRUE` is used for demo reloads so Snowflake can reload the same files after the RAW tables are truncated.
-
-This is different from an append-only production ingestion strategy. In a production design, the pipeline would typically use load metadata, file tracking, batch IDs, streams/tasks, Snowpipe, or merge logic to prevent duplicate ingestion.
-
-### Full Local Orchestration Dry Run
-
-The full local orchestration flow was tested with:
-
-```powershell
-python scripts/run_pipeline.py --skip-generate --upload-s3 --s3-bucket fraud-dispute-analytics-sam-23402 --reload-snowflake --run-dbt
-
-For this portfolio project, the controlled full reload is intentional because it provides a safe and repeatable development workflow.
-### Full Local Orchestration Dry Run
-
-The full local orchestration flow was tested successfully with:
-
-```powershell
-python scripts/run_pipeline.py --skip-generate --upload-s3 --s3-bucket fraud-dispute-analytics-sam-23402 --reload-snowflake --run-dbt
-```
-
-This command runs the pipeline in sequence:
-
-```text
-1. Validate raw data against versioned data contracts
-2. Partition valid raw data into the S3-style raw zone
-3. Preview S3 upload using dry-run mode
-4. Preview Snowflake RAW reload using dry-run mode
-5. Run dbt build against the dev target
-```
-
-The S3 and Snowflake steps are protected by dry-run defaults.
-
-```text
-S3 upload: dry run
-Snowflake RAW reload: dry run
-```
-
-This means the pipeline previews external system changes without accidentally uploading files to S3 or truncating/reloading Snowflake RAW tables.
-
-Successful dbt result:
-
-```text
-PASS=38
-WARN=0
-ERROR=0
-SKIP=0
-NO-OP=0
-TOTAL=38
-```
-
-Successful orchestration result:
-
-```text
-Step completed successfully: Upload partitioned raw files to S3
-Step completed successfully: Reload Snowflake RAW tables from S3
-Step completed successfully: Run dbt build against target: dev
-Pipeline completed successfully.
-```
-
-This proves the project has an orchestration-ready local pipeline with validation gates, dry-run protection for external systems, and successful downstream dbt transformations and data quality tests.
+Built an end-to-end fintech fraud and dispute analytics pipeline using Python, AWS S3, Snowflake, dbt, Airflow, GitHub Actions, and Streamlit. The project generates **23,540 synthetic records**, validates raw data through versioned JSON Schema contracts, partitions data into an S3-style raw zone, transforms Snowflake data through dbt bronze/silver/gold models, and enforces production-style failure handling through hard-fail blocking, quarantine continuation, warning tiers, validation reports, and pipeline audit logging.
