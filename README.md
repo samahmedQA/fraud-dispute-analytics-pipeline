@@ -66,32 +66,37 @@ This project simulates that workflow by creating trusted reporting tables for:
 
 ```mermaid
 flowchart TD
-    A["Python Synthetic Data<br/>23,540 Records"]
-    B["Data Contracts<br/>Validation Gate"]
-    C["Partition + Upload<br/>S3 Raw Zone"]
-    D["Snowflake RAW<br/>External Stage + VARIANT JSON"]
-    E["dbt Models<br/>Bronze → Silver → Gold"]
-    F["Analytics Outputs<br/>Streamlit Dashboard<br/>Monitoring Tables"]
+    A["Python Synthetic Data: 23,540 Records"]
+    B["Data Contracts and Validation Gate"]
+    C["Partitioned S3 Raw Zone"]
+    D["Snowflake RAW: External Stage and VARIANT JSON"]
+    E["dbt Models: Bronze, Silver, Gold"]
+    F["Analytics Outputs: Streamlit and Monitoring"]
 
-    A -->|"raw JSON files"| B
-    B -->|"validated records"| C
-    C -->|"partitioned JSON<br/>dataset/year/month"| D
-    D -->|"typed relational models"| E
-    E -->|"gold KPI marts"| F
+    G["Quarantine and Validation Reports: hard_fail, quarantine_continue, warn_continue"]
+    H["Airflow DAG: Orchestrates Pipeline"]
+    I["GitHub Actions CI: Safe Automated Checks"]
+    J["Snowpipe POC: Event-Driven Ingestion Test"]
+    K["Pipeline Audit Logs: Captures All Pipeline Stages"]
 
-    B -->|"invalid / unusual records"| G["Quarantine + Validation Reports<br/><br/>hard_fail<br/>quarantine_continue<br/>warn_continue"]
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
 
-    H["Airflow DAG<br/>Orchestrates Pipeline"] -.-> A
+    B --> G
+
+    H -.-> A
     H -.-> B
     H -.-> C
     H -.-> D
     H -.-> E
 
-    I["GitHub Actions CI<br/>Safe Automated Checks"] -. "validates code,<br/>contracts, and DAG" .-> B
+    I -.-> B
+    J -.-> D
 
-    J["Snowpipe POC<br/>Auto-Ingest Test"] -. "event-driven<br/>S3 load test" .-> D
-
-    K["Pipeline Audit Logs<br/>Captures all pipeline stages"] -.-> B
+    K -.-> B
     K -.-> C
     K -.-> D
     K -.-> E
