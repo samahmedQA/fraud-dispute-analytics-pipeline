@@ -66,25 +66,36 @@ This project simulates that workflow by creating trusted reporting tables for:
 
 ```mermaid
 flowchart TD
-    I["Airflow DAG<br/>Orchestration"] -. "orchestrates" .-> A
+    A["Python Synthetic Data<br/>23,540 Records"]
+    B["Data Contracts<br/>Validation Gate"]
+    C["Partition + Upload<br/>S3 Raw Zone"]
+    D["Snowflake RAW<br/>External Stage + VARIANT JSON"]
+    E["dbt Models<br/>Bronze → Silver → Gold"]
+    F["Analytics Outputs<br/>Streamlit Dashboard<br/>Monitoring Tables"]
 
-    A["Python Synthetic Data<br/>23,540 Records"] --> B["Data Contracts<br/>Validation Gate"]
+    A -->|"raw JSON files"| B
+    B -->|"validated records"| C
+    C -->|"partitioned JSON<br/>dataset/year/month"| D
+    D -->|"typed relational models"| E
+    E -->|"gold KPI marts"| F
 
-    B --> C["S3-Style Raw Zone<br/>Dataset / Year / Month<br/>Partitions"]
+    B -->|"invalid / unusual records"| G["Quarantine + Validation Reports<br/><br/>hard_fail<br/>quarantine_continue<br/>warn_continue"]
 
-    C --> D["AWS S3 + Snowflake RAW<br/>External Stage<br/>JSON Loading"]
+    H["Airflow DAG<br/>Orchestrates Pipeline"] -.-> A
+    H -.-> B
+    H -.-> C
+    H -.-> D
+    H -.-> E
 
-    D --> E["dbt Transformations<br/>Bronze → Silver → Gold"]
+    I["GitHub Actions CI<br/>Safe Automated Checks"] -. "validates code,<br/>contracts, and DAG" .-> B
 
-    E --> F["Analytics Outputs<br/>Streamlit Dashboard<br/>Monitoring Tables"]
+    J["Snowpipe POC<br/>Auto-Ingest Test"] -. "event-driven<br/>S3 load test" .-> D
 
-    B --> G["Quarantine +<br/>Validation Reports<br/><br/>hard_fail<br/>quarantine_continue<br/>warn_continue"]
-
-    F --> H["Pipeline<br/>Audit Logs"]
-
-    J["GitHub Actions CI<br/>Safe Automated Checks"] -. "validates contracts<br/>and pipeline logic" .-> B
-
-    K["Snowpipe POC<br/>Auto-Ingest Test"] -. "event-driven<br/>ingestion test" .-> D
+    K["Pipeline Audit Logs<br/>Captures all pipeline stages"] -.-> B
+    K -.-> C
+    K -.-> D
+    K -.-> E
+    K -.-> F
 ```
 
 The pipeline starts with synthetic fintech data generation, validates raw data through versioned contracts, partitions valid records into an S3-style raw zone, loads JSON into Snowflake RAW tables, and transforms the data through dbt bronze, silver, and gold models.
