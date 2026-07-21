@@ -66,41 +66,40 @@ This project simulates that workflow by creating trusted reporting tables for:
 
 ```mermaid
 flowchart TD
-    A["Python Synthetic Data: 23,540 Records"]
-    B["Data Contracts and Validation Gate"]
+    A["Python Synthetic Data<br/>23,540 Records"]
+    B["Data Contracts<br/>Validation Gate"]
     C["Partitioned S3 Raw Zone"]
-    D["Snowflake RAW: External Stage and VARIANT JSON"]
-    E["dbt Models: Bronze, Silver, Gold"]
-    F["Analytics Outputs: Streamlit and Monitoring"]
+    D["Snowflake RAW<br/>External Stage + VARIANT JSON"]
+    E["dbt Models<br/>Bronze → Silver → Gold"]
+    F["Analytics Outputs<br/>Streamlit + Monitoring"]
 
-    G["Quarantine and Validation Reports: hard_fail, quarantine_continue, warn_continue"]
-    H["Airflow DAG: Orchestrates Pipeline"]
-    I["GitHub Actions CI: Safe Automated Checks"]
-    J["Snowpipe POC: Event-Driven Ingestion Test"]
-    K["Pipeline Audit Logs: Captures All Pipeline Stages"]
+    G["Quarantine + Validation Reports<br/>hard_fail · quarantine_continue · warn_continue"]
+    H["Airflow DAG"]
+    I["GitHub Actions CI"]
+    J["Snowpipe POC"]
+    K["Pipeline Audit Logs<br/>Captures all stages"]
 
-    A --> B
-    B --> C
-    C --> D
-    D --> E
-    E --> F
+    A -->|"raw JSON"| B
+    B -->|"validated records"| C
+    B -->|"invalid / unusual records"| G
+    C -->|"partitioned JSON"| D
+    D -->|"typed models"| E
+    E -->|"gold KPI marts"| F
 
-    B --> G
+    H -. "orchestrates" .-> A
+    H -. "orchestrates" .-> B
+    H -. "orchestrates" .-> C
+    H -. "orchestrates" .-> D
+    H -. "orchestrates" .-> E
 
-    H -.-> A
-    H -.-> B
-    H -.-> C
-    H -.-> D
-    H -.-> E
+    I -. "validates" .-> B
+    J -. "event-driven test" .-> D
 
-    I -.-> B
-    J -.-> D
-
-    K -.-> B
-    K -.-> C
-    K -.-> D
-    K -.-> E
-    K -.-> F
+    K -. "records" .-> B
+    K -. "records" .-> C
+    K -. "records" .-> D
+    K -. "records" .-> E
+    K -. "records" .-> F
 ```
 
 The pipeline starts with synthetic fintech data generation, validates raw data through versioned contracts, partitions valid records into an S3-style raw zone, loads JSON into Snowflake RAW tables, and transforms the data through dbt bronze, silver, and gold models.
