@@ -65,62 +65,19 @@ This project simulates that workflow by creating trusted reporting tables for:
 ## Architecture
 
 ```mermaid
-flowchart TB
+flowchart TD
+    A["Python Synthetic Data<br/>23,540 Records"] --> B["Data Contracts<br/>Validation Gate"]
+    B --> C["S3-Style Raw Zone<br/>Partitioned by Dataset / Year / Month"]
+    C --> D["AWS S3 + Snowflake RAW<br/>External Stage + JSON Loading"]
+    D --> E["dbt Transformations<br/>Bronze → Silver → Gold"]
+    E --> F["Analytics Outputs<br/>Streamlit Dashboard + Monitoring"]
 
-    subgraph source["1. Source Data"]
-        A[Python Synthetic Data Generator]
-        B[Local JSON Raw Files]
-        A --> B
-    end
+    B --> G["Quarantine + Validation Reports"]
+    F --> H["Pipeline Audit Logs"]
 
-    subgraph quality["2. Data Quality Gate"]
-        C[Versioned Data Contracts]
-        Q[Quarantine Files]
-        R[Validation Reports]
-        C -->|Invalid records| Q
-        C -->|Validation results| R
-    end
-
-    subgraph storage["3. Raw Storage & Loading"]
-        D[Partitioned Local Raw Zone]
-        E[AWS S3 Raw Zone]
-        F[Snowflake External Stage]
-        G[Snowflake RAW Tables]
-        D --> E
-        E --> F
-        F --> G
-    end
-
-    subgraph transform["4. dbt Transformation Layer"]
-        H[dbt Bronze Models]
-        I[dbt Silver Models]
-        J[dbt Gold Marts]
-        H --> I
-        I --> J
-    end
-
-    subgraph serving["5. Reporting & Monitoring"]
-        K[Streamlit Dashboard]
-        M[Monitoring Row Counts]
-        J --> K
-        J --> M
-    end
-
-    subgraph ops["Orchestration, CI, and Observability"]
-        P[Airflow DAG]
-        CI[GitHub Actions CI]
-        L[Pipeline Audit Logs]
-        S[Snowpipe Auto-Ingest POC]
-    end
-
-    B --> C
-    C -->|Valid records| D
-    G --> H
-
-    P -. orchestrates pipeline tasks .-> A
-    CI -. validates code and data checks .-> C
-    L -. records pipeline run metadata .-> P
-    S -. event-driven load test .-> F
+    I["Airflow DAG"] -. "orchestrates" .-> A
+    J["GitHub Actions CI"] -. "validates" .-> B
+    K["Snowpipe POC"] -. "event-driven ingestion test" .-> D
 ```
 
 The pipeline starts with synthetic fintech data generation, validates raw data through versioned contracts, partitions valid records into an S3-style raw zone, loads JSON into Snowflake RAW tables, and transforms the data through dbt bronze, silver, and gold models.
