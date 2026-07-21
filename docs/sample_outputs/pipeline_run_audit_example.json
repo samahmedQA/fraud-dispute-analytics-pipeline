@@ -1,48 +1,48 @@
 {
-  "run_id": "20260712T033317Z_6f6e990f",
+  "run_id": "20260716T231456Z_8c138690",
   "pipeline_name": "fraud_dispute_analytics_pipeline",
-  "started_at_utc": "2026-07-12T03:33:17.471945Z",
-  "ended_at_utc": "2026-07-12T03:33:36.498201Z",
-  "duration_seconds": 19.03,
+  "started_at_utc": "2026-07-16T23:14:56.841038Z",
+  "ended_at_utc": "2026-07-16T23:15:44.021521Z",
+  "duration_seconds": 47.18,
   "status": "SUCCESS",
   "failure_reason": null,
-  "command": "scripts\\run_pipeline.py --skip-generate --reload-snowflake",
+  "command": "scripts\\run_pipeline.py --skip-generate --run-dbt",
   "config": {
     "skip_generate": true,
     "upload_s3_requested": false,
     "s3_upload_mode": "dry_run",
     "s3_bucket": "your-s3-bucket-name",
-    "snowflake_reload_requested": true,
+    "snowflake_reload_requested": false,
     "snowflake_reload_mode": "dry_run",
     "snowflake_reload_sql": "sql/load_raw_from_s3.sql",
-    "run_dbt_requested": false,
+    "run_dbt_requested": true,
     "dbt_target": "dev"
   },
   "steps": [
     {
       "step_name": "Validate data contracts",
       "command": "<PROJECT_ROOT>\\.venv\\Scripts\\python.exe scripts/validate_data_contracts.py",
-      "started_at_utc": "2026-07-12T03:33:17.473079Z",
-      "ended_at_utc": "2026-07-12T03:33:22.885519Z",
-      "duration_seconds": 5.42,
+      "started_at_utc": "2026-07-16T23:14:56.841038Z",
+      "ended_at_utc": "2026-07-16T23:14:59.516600Z",
+      "duration_seconds": 2.68,
       "status": "SUCCESS",
       "failure_reason": null
     },
     {
       "step_name": "Partition raw data for S3",
       "command": "<PROJECT_ROOT>\\.venv\\Scripts\\python.exe scripts/partition_data_for_s3.py",
-      "started_at_utc": "2026-07-12T03:33:22.885519Z",
-      "ended_at_utc": "2026-07-12T03:33:24.370572Z",
-      "duration_seconds": 1.48,
+      "started_at_utc": "2026-07-16T23:14:59.516600Z",
+      "ended_at_utc": "2026-07-16T23:15:00.055848Z",
+      "duration_seconds": 0.54,
       "status": "SUCCESS",
       "failure_reason": null
     },
     {
-      "step_name": "Reload Snowflake RAW tables from S3",
-      "command": "<PROJECT_ROOT>\\.venv\\Scripts\\python.exe scripts/run_snowflake_sql.py --sql-file sql/load_raw_from_s3.sql",
-      "started_at_utc": "2026-07-12T03:33:24.371656Z",
-      "ended_at_utc": "2026-07-12T03:33:36.498201Z",
-      "duration_seconds": 12.13,
+      "step_name": "Run dbt build against target: dev",
+      "command": "<PROJECT_ROOT>\\.venv\\Scripts\\python.exe -c from dbt.cli.main import cli; cli() build --target dev",
+      "started_at_utc": "2026-07-16T23:15:00.055848Z",
+      "ended_at_utc": "2026-07-16T23:15:44.021521Z",
+      "duration_seconds": 43.96,
       "status": "SUCCESS",
       "failure_reason": null
     }
@@ -117,5 +117,5 @@
       }
     ]
   },
-  "audit_file": "data\\pipeline_audit_logs\\pipeline_run_20260712T033317Z_6f6e990f.json"
+  "audit_file": "data\\pipeline_audit_logs\\pipeline_run_20260716T231456Z_8c138690.json"
 }
