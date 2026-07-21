@@ -64,40 +64,45 @@ This project simulates that workflow by creating trusted reporting tables for:
 
 ## Architecture
 
-```text
-Python Synthetic Data Generator
-        ↓
-Local JSON Files
-        ↓
-Data Contracts / Validation Gate
-        ↓
-Quarantine + Validation Reports
-        ↓
-Partitioned Local Raw Zone
-        ↓
-AWS S3 Raw Zone
-        ↓
-Snowflake Storage Integration + External Stage
-        ↓
-Snowflake RAW Tables
-        ↓
-dbt Bronze Models
-        ↓
-dbt Silver Models
-        ↓
-dbt Gold Marts
-        ↓
-Monitoring Tables + Streamlit Dashboard
+```mermaid
+flowchart LR
+    A[Python Synthetic Data Generator] --> B[Local JSON Raw Files]
+
+    B --> C[Data Contracts / Validation Gate]
+    C -->|Valid Data| D[Partitioned Local Raw Zone]
+    C -->|Invalid Data| Q[Quarantine Files]
+    C --> R[Validation Reports]
+
+    D --> E[AWS S3 Raw Zone]
+    E --> F[Snowflake External Stage]
+    F --> G[Snowflake RAW Tables]
+
+    G --> H[dbt Bronze Models]
+    H --> I[dbt Silver Models]
+    I --> J[dbt Gold Marts]
+
+    J --> K[Streamlit Dashboard]
+    J --> M[Monitoring Row Counts]
+
+    P[Airflow DAG] -. orchestrates .-> A
+    P -. orchestrates .-> C
+    P -. orchestrates .-> D
+    P -. orchestrates .-> E
+    P -. orchestrates .-> G
+    P -. orchestrates .-> H
+
+    CI[GitHub Actions CI] -. validates .-> A
+    CI -. validates .-> C
+    CI -. validates .-> D
+    CI -. validates .-> P
+
+    L[Pipeline Audit Logs] -. records run metadata .-> P
+    S[Snowpipe Auto-Ingest POC] -. event-driven load test .-> F
 ```
 
-Supporting components:
+The pipeline starts with synthetic fintech data generation, validates raw data through versioned contracts, partitions valid records into an S3-style raw zone, loads JSON into Snowflake RAW tables, and transforms the data through dbt bronze, silver, and gold models.
 
-```text
-Airflow DAG
-GitHub Actions CI
-Pipeline Audit Logs
-Snowpipe Auto-Ingest POC
-```
+Supporting components include Airflow orchestration, GitHub Actions CI, pipeline audit logs, validation reports, quarantine handling, monitoring tables, Streamlit dashboarding, and a Snowpipe auto-ingest proof of concept.
 
 ---
 
