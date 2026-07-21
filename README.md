@@ -64,6 +64,7 @@ This project simulates that workflow by creating trusted reporting tables for:
 
 ## Architecture
 
+```mermaid
 flowchart TD
     A["Python Synthetic Data<br/>23,540 Records"]
     B["Data Contracts<br/>Validation Gate"]
@@ -84,6 +85,7 @@ flowchart TD
 
     I -. "validates" .-> B
     J -. "event-driven test" .-> D
+```
 
 The pipeline starts with synthetic fintech data generation, validates raw data through versioned contracts, partitions valid records into an S3-style raw zone, loads JSON into Snowflake RAW tables, and transforms the data through dbt bronze, silver, and gold models.
 
