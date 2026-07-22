@@ -31,7 +31,16 @@
     },
     "rule_triggered": {
       "type": "string",
-      "enum": ["Amount Spike", "High Amount", "New Device", "None", "Unusual Merchant", "Velocity Check"]
+      "enum": [
+  "Amount Spike",
+  "High Amount",
+  "New Device",
+  "None",
+  "Unusual Merchant",
+  "Velocity Check",
+  "Device Mismatch",
+  "Geo Anomaly"
+]
     },
     "device_risk_score": {
       "type": "number",
