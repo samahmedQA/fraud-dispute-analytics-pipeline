@@ -3,10 +3,10 @@ name: CI Pipeline Checks
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     branches:
-      - master
+      - main
 
 jobs:
   pipeline-checks:
@@ -32,6 +32,10 @@ jobs:
           python -m compileall dashboards
           python -m py_compile airflow/dags/fraud_dispute_pipeline_dag.py
 
+      - name: Run pipeline reliability tests
+        run: |
+          python -m pytest tests/test_pipeline_reliability.py -v
+
       - name: Generate synthetic data
         run: |
           python scripts/generate_data.py
@@ -40,6 +44,6 @@ jobs:
         run: |
           python scripts/validate_data_contracts.py
 
-      - name: Partition raw data for S3 layout
+      - name: Partition validated data for S3 layout
         run: |
           python scripts/partition_data_for_s3.py
