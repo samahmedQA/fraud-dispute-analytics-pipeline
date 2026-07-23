@@ -10,6 +10,7 @@ from jsonschema import Draft202012Validator
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
+VALIDATED_DATA_DIR = PROJECT_ROOT / "data" / "validated"
 CONTRACTS_DIR = PROJECT_ROOT / "contracts" / "v1"
 QUARANTINE_DIR = PROJECT_ROOT / "data" / "quarantine" / "invalid_records"
 REPORTS_DIR = PROJECT_ROOT / "data" / "validation_reports"
@@ -204,7 +205,6 @@ def validate_duplicate_primary_keys(dataset_name, records, primary_key):
 
 def validate_late_arriving_transactions(dataset_name, records, primary_key, timestamp_field):
     warnings = []
-
     parsed_dates = []
 
     for _, record in records:
@@ -243,7 +243,10 @@ def validate_late_arriving_transactions(dataset_name, records, primary_key, time
                     "field": timestamp_field,
                     "rule": "late_arriving_event",
                     "severity": "warn_continue",
-                    "message": f"Transaction timestamp is {days_behind_latest} days older than latest record in batch.",
+                    "message": (
+                        f"Transaction timestamp is {days_behind_latest} "
+                        "days older than latest record in batch."
+                    ),
                 }
             )
 
@@ -261,6 +264,19 @@ def write_quarantine_file(dataset_name, records, invalid_record_indexes):
             file.write(json.dumps(record) + "\n")
 
     return quarantine_path
+
+
+def write_validated_file(dataset_name, records, invalid_record_indexes):
+    VALIDATED_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    validated_path = VALIDATED_DATA_DIR / f"{dataset_name}.json"
+
+    with open(validated_path, "w", encoding="utf-8") as file:
+        for index, (_, record) in enumerate(records):
+            if index not in invalid_record_indexes:
+                file.write(json.dumps(record) + "\n")
+
+    return validated_path
 
 
 def write_validation_audit_log(dataset_name, report, report_path):
@@ -281,6 +297,7 @@ def write_validation_audit_log(dataset_name, report, report_path):
         "error_count_by_severity": report["error_count_by_severity"],
         "report_file": str(report_path),
         "quarantine_file": report["quarantine_file"],
+        "validated_file": report["validated_file"],
     }
 
     with open(audit_log_path, "a", encoding="utf-8") as file:
@@ -363,9 +380,18 @@ def validate_dataset(dataset_name, config, input_file_override=None):
         pipeline_action = "UPLOAD_ALL_RECORDS"
 
     quarantine_path = None
+    validated_path = None
 
     if invalid_record_indexes:
         quarantine_path = write_quarantine_file(dataset_name, records, invalid_record_indexes)
+
+    if batch_status == "FAILED":
+        stale_validated_path = VALIDATED_DATA_DIR / f"{dataset_name}.json"
+
+        if stale_validated_path.exists():
+            stale_validated_path.unlink()
+    else:
+        validated_path = write_validated_file(dataset_name, records, invalid_record_indexes)
 
     severity_counts = Counter(failure["severity"] for failure in failed_rules)
 
@@ -380,6 +406,7 @@ def validate_dataset(dataset_name, config, input_file_override=None):
         "warning_count": len(warn_continue_failures),
         "error_count_by_severity": dict(severity_counts),
         "quarantine_file": str(quarantine_path) if quarantine_path else None,
+        "validated_file": str(validated_path) if validated_path else None,
         "failed_rules": failed_rules,
     }
 
@@ -397,6 +424,9 @@ def validate_dataset(dataset_name, config, input_file_override=None):
 
     if quarantine_path:
         print(f"Quarantine File: {quarantine_path}")
+
+    if validated_path:
+        print(f"Validated File: {validated_path}")
 
     return batch_status
 
