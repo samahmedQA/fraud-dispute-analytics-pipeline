@@ -23,3 +23,5 @@ s3_snowpipe_notification_config.json
 data/validation_reports/
 data/quarantine/
 data/pipeline_audit_logs/
+
+data/validated/

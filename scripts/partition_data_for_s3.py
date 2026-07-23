@@ -1,11 +1,12 @@
 import json
+import shutil
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-RAW_DIR = PROJECT_ROOT / "data" / "raw"
+VALIDATED_DIR = PROJECT_ROOT / "data" / "validated"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "s3_partitioned" / "raw"
 
 
@@ -61,10 +62,13 @@ def load_json_lines(file_path: Path):
 
 
 def write_partitioned_dataset(dataset_name: str, input_file: str, date_field: str):
-    input_path = RAW_DIR / input_file
+    input_path = VALIDATED_DIR / input_file
 
     if not input_path.exists():
-        raise FileNotFoundError(f"Missing input file: {input_path}")
+        raise FileNotFoundError(
+            f"Missing validated input file: {input_path}. "
+            "Run scripts/validate_data_contracts.py before partitioning."
+        )
 
     partitions = defaultdict(list)
 
@@ -100,9 +104,11 @@ def write_partitioned_dataset(dataset_name: str, input_file: str, date_field: st
 
 def main():
     if OUTPUT_DIR.exists():
-        print(f"Writing partitioned files to: {OUTPUT_DIR}")
-    else:
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(OUTPUT_DIR)
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    print(f"Writing partitioned files to: {OUTPUT_DIR}")
 
     for dataset_name, config in DATASETS.items():
         write_partitioned_dataset(
