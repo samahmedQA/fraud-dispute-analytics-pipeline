@@ -5,11 +5,32 @@ from datetime import datetime, timedelta
 from faker import Faker
 from pathlib import Path
 
-fake = Faker()
 
-OUTPUT_DIR = Path("data/raw")
+# -----------------------------
+# Reproducibility
+# -----------------------------
+SEED = 42
+BASE_DATE = datetime(2026, 7, 21)
+
+random.seed(SEED)
+np.random.seed(SEED)
+Faker.seed(SEED)
+
+fake = Faker()
+fake.seed_instance(SEED)
+
+
+# -----------------------------
+# Output location
+# -----------------------------
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+OUTPUT_DIR = PROJECT_ROOT / "data" / "raw"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+
+# -----------------------------
+# Config
+# -----------------------------
 NUM_TRANSACTIONS = 10000
 NUM_CUSTOMERS = 1500
 
@@ -22,7 +43,13 @@ chargeback_outcomes = ["Won", "Lost", "Pending"]
 
 
 def random_date(days_back=365):
-    end_date = datetime.today()
+    """
+    Generate a deterministic fake datetime within a fixed window.
+
+    BASE_DATE is fixed so the generated dataset does not change depending
+    on the day the script is run.
+    """
+    end_date = BASE_DATE
     start_date = end_date - timedelta(days=days_back)
     return fake.date_time_between(start_date=start_date, end_date=end_date)
 
@@ -80,10 +107,19 @@ for _, row in transactions_df.iterrows():
 
     if fraud_score >= 0.75:
         risk_level = "High"
-        rule_triggered = random.choice(["Velocity Check", "High Amount", "Device Mismatch", "Geo Anomaly"])
+        rule_triggered = random.choice([
+            "Velocity Check",
+            "High Amount",
+            "Device Mismatch",
+            "Geo Anomaly"
+        ])
     elif fraud_score >= 0.40:
         risk_level = "Medium"
-        rule_triggered = random.choice(["Unusual Merchant", "Amount Spike", "New Device"])
+        rule_triggered = random.choice([
+            "Unusual Merchant",
+            "Amount Spike",
+            "New Device"
+        ])
     else:
         risk_level = "Low"
         rule_triggered = "None"
@@ -161,13 +197,14 @@ chargebacks_df = pd.DataFrame(chargebacks)
 
 
 # -----------------------------
-# Save files locally as JSON
+# Save files locally as newline-delimited JSON
 # -----------------------------
 customers_df.to_json(OUTPUT_DIR / "customers.json", orient="records", lines=True)
 transactions_df.to_json(OUTPUT_DIR / "transactions.json", orient="records", lines=True)
 fraud_signals_df.to_json(OUTPUT_DIR / "fraud_signals.json", orient="records", lines=True)
 disputes_df.to_json(OUTPUT_DIR / "disputes.json", orient="records", lines=True)
 chargebacks_df.to_json(OUTPUT_DIR / "chargeback_outcomes.json", orient="records", lines=True)
+
 
 print("Synthetic fintech JSON data generated successfully.")
 print(f"Customers: {len(customers_df)}")
