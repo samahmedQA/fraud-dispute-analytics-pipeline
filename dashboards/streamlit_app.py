@@ -85,34 +85,39 @@ def get_first_existing_column(df: pd.DataFrame, possible_columns: list[str]):
     return None
 
 
+def get_table_name(schema_name: str, table_name: str) -> str:
+    database_name = os.getenv("SNOWFLAKE_DATABASE")
+    return f"{database_name}.{schema_name}.{table_name}"
+
+
 try:
-    fraud_summary = convert_numeric_columns(run_query("""
+    fraud_summary = convert_numeric_columns(run_query(f"""
         SELECT *
-        FROM FRAUD_DISPUTE_DB.MARTS.GOLD_FRAUD_SUMMARY_BY_NETWORK
+        FROM {get_table_name("MARTS", "GOLD_FRAUD_SUMMARY_BY_NETWORK")}
         ORDER BY CARD_NETWORK
     """))
 
-    dispute_summary = convert_numeric_columns(run_query("""
+    dispute_summary = convert_numeric_columns(run_query(f"""
         SELECT *
-        FROM FRAUD_DISPUTE_DB.MARTS.GOLD_DISPUTE_CHARGEBACK_SUMMARY_BY_NETWORK
+        FROM {get_table_name("MARTS", "GOLD_DISPUTE_CHARGEBACK_SUMMARY_BY_NETWORK")}
         ORDER BY CARD_NETWORK
     """))
 
-    daily_fraud = convert_numeric_columns(run_query("""
+    daily_fraud = convert_numeric_columns(run_query(f"""
         SELECT *
-        FROM FRAUD_DISPUTE_DB.MARTS.GOLD_DAILY_FRAUD_KPIS
+        FROM {get_table_name("MARTS", "GOLD_DAILY_FRAUD_KPIS")}
         ORDER BY 1, 2
     """))
 
-    daily_disputes = convert_numeric_columns(run_query("""
+    daily_disputes = convert_numeric_columns(run_query(f"""
         SELECT *
-        FROM FRAUD_DISPUTE_DB.MARTS.GOLD_DAILY_DISPUTE_KPIS
+        FROM {get_table_name("MARTS", "GOLD_DAILY_DISPUTE_KPIS")}
         ORDER BY 1, 2
     """))
 
-    row_counts = convert_numeric_columns(run_query("""
+    row_counts = convert_numeric_columns(run_query(f"""
         SELECT *
-        FROM FRAUD_DISPUTE_DB.MONITORING.MONITORING_PIPELINE_ROW_COUNTS
+        FROM {get_table_name("MONITORING", "MONITORING_PIPELINE_ROW_COUNTS")}
         ORDER BY 1, 2
     """))
 
