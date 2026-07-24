@@ -1,0 +1,27 @@
+﻿fraud_dispute_dbt:
+  target: dev
+
+  outputs:
+    dev:
+      type: snowflake
+      account: YOUR_SNOWFLAKE_ACCOUNT
+      user: YOUR_SNOWFLAKE_USER
+      password: YOUR_SNOWFLAKE_PASSWORD
+      role: YOUR_SNOWFLAKE_ROLE
+      warehouse: FRAUD_DISPUTE_WH
+      database: FRAUD_DISPUTE_DB
+      schema: STAGING
+      threads: 4
+      client_session_keep_alive: false
+
+    stg:
+      type: snowflake
+      account: YOUR_SNOWFLAKE_ACCOUNT
+      user: YOUR_SNOWFLAKE_USER
+      password: YOUR_SNOWFLAKE_PASSWORD
+      role: YOUR_SNOWFLAKE_ROLE
+      warehouse: FRAUD_DISPUTE_WH
+      database: FRAUD_DISPUTE_STG
+      schema: STAGING
+      threads: 4
+      client_session_keep_alive: false
