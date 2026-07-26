@@ -1,10 +1,13 @@
--- Purpose:
+﻿-- Purpose:
 -- Reload Snowflake RAW tables from the partitioned AWS S3 raw zone.
 --
 -- Strategy:
--- This is a controlled full reload.
--- Each RAW table is truncated before COPY INTO runs.
+-- This is a controlled full reload for development and demo repeatability.
+-- Each RAW table is cleared before COPY INTO runs.
 -- This prevents duplicate rows when the same S3 files are loaded again.
+--
+-- Role:
+-- Runtime reloads should use FRAUD_DISPUTE_ROLE rather than an admin role.
 --
 -- Flow:
 -- S3_RAW_STAGE
@@ -14,15 +17,15 @@
 --   -> RAW_DISPUTES
 --   -> RAW_CHARGEBACK_OUTCOMES
 
-USE ROLE ACCOUNTADMIN;
+USE ROLE FRAUD_DISPUTE_ROLE;
 USE DATABASE FRAUD_DISPUTE_DB;
 USE SCHEMA RAW;
 
-TRUNCATE TABLE RAW_CUSTOMERS;
-TRUNCATE TABLE RAW_TRANSACTIONS;
-TRUNCATE TABLE RAW_FRAUD_SIGNALS;
-TRUNCATE TABLE RAW_DISPUTES;
-TRUNCATE TABLE RAW_CHARGEBACK_OUTCOMES;
+DELETE FROM RAW_CUSTOMERS;
+DELETE FROM RAW_TRANSACTIONS;
+DELETE FROM RAW_FRAUD_SIGNALS;
+DELETE FROM RAW_DISPUTES;
+DELETE FROM RAW_CHARGEBACK_OUTCOMES;
 
 COPY INTO RAW_CUSTOMERS (raw_record)
 FROM (
