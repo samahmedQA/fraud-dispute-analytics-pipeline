@@ -64,13 +64,42 @@ DATASETS = {
 }
 
 
+class MalformedJsonLinesError(Exception):
+    """Raised when a JSON Lines file contains one or more malformed lines."""
+
+    def __init__(self, file_path, errors):
+        self.file_path = Path(file_path)
+        self.errors = errors
+
+        super().__init__(
+            f"{self.file_path} contains {len(errors)} malformed JSON line(s)."
+        )
+
+
 def load_json_lines(file_path):
     records = []
+    parse_errors = []
 
     with open(file_path, "r", encoding="utf-8") as file:
         for line_number, line in enumerate(file, start=1):
-            if line.strip():
-                records.append((line_number, json.loads(line)))
+            stripped_line = line.strip()
+
+            if not stripped_line:
+                continue
+
+            try:
+                records.append((line_number, json.loads(stripped_line)))
+            except json.JSONDecodeError as error:
+                parse_errors.append(
+                    {
+                        "line_number": line_number,
+                        "message": error.msg,
+                        "raw_line": stripped_line,
+                    }
+                )
+
+    if parse_errors:
+        raise MalformedJsonLinesError(file_path, parse_errors)
 
     return records
 
@@ -319,7 +348,64 @@ def write_validation_report(dataset_name, report):
 
 def validate_dataset(dataset_name, config, input_file_override=None):
     raw_file = Path(input_file_override) if input_file_override else config["raw_file"]
-    records = load_json_lines(raw_file)
+
+    try:
+        records = load_json_lines(raw_file)
+    except MalformedJsonLinesError as error:
+        batch_status = "FAILED"
+        pipeline_action = "BLOCK_S3_UPLOAD"
+
+        failed_rules = [
+            {
+                "rule_name": "valid_json_lines",
+                "severity": "hard_fail",
+                "record_id": "UNKNOWN",
+                "line_number": parse_error["line_number"],
+                "field": None,
+                "message": parse_error["message"],
+                "invalid_value": parse_error["raw_line"],
+            }
+            for parse_error in error.errors
+        ]
+
+        stale_validated_path = VALIDATED_DATA_DIR / f"{dataset_name}.json"
+
+        if stale_validated_path.exists():
+            stale_validated_path.unlink()
+
+        severity_counts = Counter(failure["severity"] for failure in failed_rules)
+
+        report = {
+            "dataset": dataset_name,
+            "contract_version": CONTRACT_VERSION,
+            "batch_status": batch_status,
+            "pipeline_action": pipeline_action,
+            "total_records": len(error.errors),
+            "valid_records": 0,
+            "invalid_records": len(error.errors),
+            "warning_count": 0,
+            "error_count_by_severity": dict(severity_counts),
+            "quarantine_file": None,
+            "validated_file": None,
+            "failed_rules": failed_rules,
+        }
+
+        report_path = write_validation_report(dataset_name, report)
+        audit_log_path = write_validation_audit_log(dataset_name, report, report_path)
+
+        print(f"Dataset: {dataset_name}")
+        print(f"Status: {batch_status}")
+        print(f"Pipeline Action: {pipeline_action}")
+        print(f"Total Records: {len(error.errors)}")
+        print(f"Invalid Records: {len(error.errors)}")
+        print("Warnings: 0")
+        print(f"Malformed JSON Lines: {len(error.errors)}")
+        print(f"Report: {report_path}")
+        print(f"Audit Log: {audit_log_path}")
+        print()
+
+        return batch_status
+
     schema = load_schema(config["schema_file"])
 
     primary_key = config["primary_key"]
