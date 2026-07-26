@@ -2,15 +2,20 @@
 -- Reload Snowflake RAW tables from the partitioned AWS S3 raw zone.
 --
 -- Strategy:
--- This is a controlled full reload for development and demo repeatability.
--- Each RAW table is cleared before COPY INTO runs.
--- This prevents duplicate rows when the same S3 files are loaded again.
+-- This script uses a safer full-refresh pattern for controlled development and reproducible testing:
+--
+-- 1. Load S3 files into temporary RAW tables first.
+-- 2. If all COPY INTO commands succeed, promote the temporary data into the real RAW tables.
+-- 3. If a COPY INTO command fails, the existing RAW tables are left untouched.
+--
+-- This avoids clearing production-facing RAW tables before confirming the new load can succeed.
 --
 -- Role:
 -- Runtime reloads should use FRAUD_DISPUTE_ROLE rather than an admin role.
 --
 -- Flow:
 -- S3_RAW_STAGE
+--   -> temporary RAW load tables
 --   -> RAW_CUSTOMERS
 --   -> RAW_TRANSACTIONS
 --   -> RAW_FRAUD_SIGNALS
@@ -21,13 +26,13 @@ USE ROLE FRAUD_DISPUTE_ROLE;
 USE DATABASE FRAUD_DISPUTE_DB;
 USE SCHEMA RAW;
 
-DELETE FROM RAW_CUSTOMERS;
-DELETE FROM RAW_TRANSACTIONS;
-DELETE FROM RAW_FRAUD_SIGNALS;
-DELETE FROM RAW_DISPUTES;
-DELETE FROM RAW_CHARGEBACK_OUTCOMES;
+CREATE OR REPLACE TEMPORARY TABLE TMP_RAW_CUSTOMERS LIKE RAW_CUSTOMERS;
+CREATE OR REPLACE TEMPORARY TABLE TMP_RAW_TRANSACTIONS LIKE RAW_TRANSACTIONS;
+CREATE OR REPLACE TEMPORARY TABLE TMP_RAW_FRAUD_SIGNALS LIKE RAW_FRAUD_SIGNALS;
+CREATE OR REPLACE TEMPORARY TABLE TMP_RAW_DISPUTES LIKE RAW_DISPUTES;
+CREATE OR REPLACE TEMPORARY TABLE TMP_RAW_CHARGEBACK_OUTCOMES LIKE RAW_CHARGEBACK_OUTCOMES;
 
-COPY INTO RAW_CUSTOMERS (raw_record)
+COPY INTO TMP_RAW_CUSTOMERS (raw_record)
 FROM (
   SELECT $1
   FROM @S3_RAW_STAGE/customers/
@@ -37,7 +42,7 @@ PATTERN = '.*[.]json'
 FORCE = TRUE
 ON_ERROR = 'ABORT_STATEMENT';
 
-COPY INTO RAW_TRANSACTIONS (raw_record)
+COPY INTO TMP_RAW_TRANSACTIONS (raw_record)
 FROM (
   SELECT $1
   FROM @S3_RAW_STAGE/transactions/
@@ -47,7 +52,7 @@ PATTERN = '.*[.]json'
 FORCE = TRUE
 ON_ERROR = 'ABORT_STATEMENT';
 
-COPY INTO RAW_FRAUD_SIGNALS (raw_record)
+COPY INTO TMP_RAW_FRAUD_SIGNALS (raw_record)
 FROM (
   SELECT $1
   FROM @S3_RAW_STAGE/fraud_signals/
@@ -57,7 +62,7 @@ PATTERN = '.*[.]json'
 FORCE = TRUE
 ON_ERROR = 'ABORT_STATEMENT';
 
-COPY INTO RAW_DISPUTES (raw_record)
+COPY INTO TMP_RAW_DISPUTES (raw_record)
 FROM (
   SELECT $1
   FROM @S3_RAW_STAGE/disputes/
@@ -67,7 +72,7 @@ PATTERN = '.*[.]json'
 FORCE = TRUE
 ON_ERROR = 'ABORT_STATEMENT';
 
-COPY INTO RAW_CHARGEBACK_OUTCOMES (raw_record)
+COPY INTO TMP_RAW_CHARGEBACK_OUTCOMES (raw_record)
 FROM (
   SELECT $1
   FROM @S3_RAW_STAGE/chargeback_outcomes/
@@ -76,3 +81,46 @@ FILE_FORMAT = (FORMAT_NAME = JSON_LINES_FORMAT)
 PATTERN = '.*[.]json'
 FORCE = TRUE
 ON_ERROR = 'ABORT_STATEMENT';
+
+-- Optional visibility before promotion.
+-- These counts make it easy to confirm that staged data loaded before replacing RAW.
+SELECT 'TMP_RAW_CUSTOMERS' AS table_name, COUNT(*) AS row_count FROM TMP_RAW_CUSTOMERS
+UNION ALL
+SELECT 'TMP_RAW_TRANSACTIONS' AS table_name, COUNT(*) AS row_count FROM TMP_RAW_TRANSACTIONS
+UNION ALL
+SELECT 'TMP_RAW_FRAUD_SIGNALS' AS table_name, COUNT(*) AS row_count FROM TMP_RAW_FRAUD_SIGNALS
+UNION ALL
+SELECT 'TMP_RAW_DISPUTES' AS table_name, COUNT(*) AS row_count FROM TMP_RAW_DISPUTES
+UNION ALL
+SELECT 'TMP_RAW_CHARGEBACK_OUTCOMES' AS table_name, COUNT(*) AS row_count FROM TMP_RAW_CHARGEBACK_OUTCOMES;
+
+-- Promote only after all temporary loads succeed.
+BEGIN TRANSACTION;
+
+DELETE FROM RAW_CUSTOMERS;
+DELETE FROM RAW_TRANSACTIONS;
+DELETE FROM RAW_FRAUD_SIGNALS;
+DELETE FROM RAW_DISPUTES;
+DELETE FROM RAW_CHARGEBACK_OUTCOMES;
+
+INSERT INTO RAW_CUSTOMERS (raw_record)
+SELECT raw_record
+FROM TMP_RAW_CUSTOMERS;
+
+INSERT INTO RAW_TRANSACTIONS (raw_record)
+SELECT raw_record
+FROM TMP_RAW_TRANSACTIONS;
+
+INSERT INTO RAW_FRAUD_SIGNALS (raw_record)
+SELECT raw_record
+FROM TMP_RAW_FRAUD_SIGNALS;
+
+INSERT INTO RAW_DISPUTES (raw_record)
+SELECT raw_record
+FROM TMP_RAW_DISPUTES;
+
+INSERT INTO RAW_CHARGEBACK_OUTCOMES (raw_record)
+SELECT raw_record
+FROM TMP_RAW_CHARGEBACK_OUTCOMES;
+
+COMMIT;

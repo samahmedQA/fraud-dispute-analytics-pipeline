@@ -1,4 +1,4 @@
--- Purpose:
+﻿-- Purpose:
 -- Example least-privilege Snowflake role setup for the fraud dispute analytics pipeline.
 --
 -- Run this with an admin role such as ACCOUNTADMIN or SECURITYADMIN.
@@ -36,6 +36,10 @@ TO ROLE FRAUD_DISPUTE_ROLE;
 -- Required for COPY INTO from the external stage.
 -- Run after S3_RAW_STAGE has been created.
 GRANT USAGE ON STAGE FRAUD_DISPUTE_DB.RAW.S3_RAW_STAGE
+TO ROLE FRAUD_DISPUTE_ROLE;
+
+-- Temporary RAW reload table creation.
+GRANT CREATE TABLE ON SCHEMA FRAUD_DISPUTE_DB.RAW
 TO ROLE FRAUD_DISPUTE_ROLE;
 
 -- RAW reload permissions.

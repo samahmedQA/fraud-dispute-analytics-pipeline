@@ -575,11 +575,7 @@ Dry-run command:
 python scripts/run_snowflake_sql.py --sql-file sql/load_raw_from_s3.sql
 ```
 
-Dry-run mode previews SQL statements without executing them. This is important because the RAW reload script contains destructive statements such as:
-
-```sql
-TRUNCATE TABLE RAW_TRANSACTIONS;
-```
+Dry-run mode previews SQL statements without executing them. This is important because the RAW reload script performs write operations against the RAW schema after staging data in temporary tables first.
 
 Execute command:
 
@@ -609,17 +605,20 @@ The project includes a controlled Snowflake RAW reload script:
 sql/load_raw_from_s3.sql
 ```
 
-The reload strategy is intentionally full-refresh for development and demo repeatability.
+The reload strategy is designed for controlled development and reproducible testing. It loads new files into temporary RAW tables first, then promotes the data only after the staged load succeeds.
 
 ```text
-TRUNCATE each RAW table
-→ COPY INTO each RAW table from the S3 external stage
-→ Rebuild downstream dbt models
+COPY S3 files into temporary RAW load tables
+-> confirm temporary loads complete successfully
+-> begin transaction
+-> replace real RAW tables from the temporary tables
+-> commit
+-> rebuild downstream dbt models
 ```
 
-This prevents duplicate RAW rows when the same S3 files are loaded more than once during development or demos.
+This prevents duplicate RAW rows when the same S3 files are loaded more than once during local development, while reducing the risk of leaving RAW tables empty if an S3 load fails.
 
-This is different from an append-only production ingestion strategy. In production, the pipeline would typically use load metadata, file tracking, batch IDs, streams/tasks, Snowpipe, or MERGE logic to prevent duplicate ingestion.
+This is different from a fully append-only production ingestion strategy. In production, the pipeline would typically add load metadata, file tracking, batch IDs, streams/tasks, Snowpipe, MERGE logic, or table swap patterns for stronger ingestion controls.
 
 ---
 
