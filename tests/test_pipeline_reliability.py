@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -149,3 +150,31 @@ def test_partitioning_reads_validated_data_not_raw_data():
     assert "CB_SENTINEL_RAW_ONLY" not in partitioned_contents
     assert "DISP_SENTINEL_RAW_ONLY" not in partitioned_contents
     assert count_partitioned_dataset_lines("chargeback_outcomes") == 840
+
+def test_malformed_json_hard_fails_with_validation_report():
+    result = run_command(
+        [
+            "scripts/validate_data_contracts.py",
+            "--dataset",
+            "transactions",
+            "--input-file",
+            "tests/fixtures/malformed_transactions.json",
+        ],
+        expect_success=False,
+    )
+
+    assert result.returncode == 1
+    assert "Status: FAILED" in result.stdout
+    assert "Pipeline Action: BLOCK_S3_UPLOAD" in result.stdout
+    assert "Malformed JSON Lines: 1" in result.stdout
+
+    report_file = PROJECT_ROOT / "data" / "validation_reports" / "transactions_validation_report.json"
+    report = json.loads(report_file.read_text(encoding="utf-8"))
+
+    assert report["batch_status"] == "FAILED"
+    assert report["pipeline_action"] == "BLOCK_S3_UPLOAD"
+    assert report["validated_file"] is None
+    assert report["failed_rules"][0]["rule_name"] == "valid_json_lines"
+    assert report["failed_rules"][0]["severity"] == "hard_fail"
+    assert report["failed_rules"][0]["line_number"] == 2
+

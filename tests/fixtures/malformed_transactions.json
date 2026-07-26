@@ -1,0 +1,2 @@
+{"transaction_id": "TXN_VALID_JSON", "customer_id": "CUST_000001", "transaction_date": "2026-01-01 00:00:00", "amount": 10.50, "merchant_id": "M_001", "merchant_name": "Test Merchant", "merchant_category": "Retail", "channel": "POS", "device_id": "DEV_001", "ip_address": "127.0.0.1", "country": "US", "card_present": true}
+{"transaction_id": "TXN_BAD_JSON", "customer_id": "CUST_000001", "amount": 
