@@ -1,7 +1,7 @@
--- Purpose:
+﻿-- Purpose:
 -- Validate RAW table row counts after loading from S3.
 
-USE ROLE ACCOUNTADMIN;
+USE ROLE FRAUD_DISPUTE_ROLE;
 USE DATABASE FRAUD_DISPUTE_DB;
 USE SCHEMA RAW;
 

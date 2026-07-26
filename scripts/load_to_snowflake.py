@@ -1,4 +1,4 @@
-import os
+﻿import os
 from pathlib import Path
 
 import snowflake.connector
@@ -23,7 +23,7 @@ def main():
         account=os.getenv("SNOWFLAKE_ACCOUNT"),
         user=os.getenv("SNOWFLAKE_USER"),
         password=os.getenv("SNOWFLAKE_PASSWORD"),
-        role=os.getenv("SNOWFLAKE_ROLE", "ACCOUNTADMIN"),
+        role=os.getenv("SNOWFLAKE_ROLE", "FRAUD_DISPUTE_ROLE"),
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
         database=os.getenv("SNOWFLAKE_DATABASE", "FRAUD_DISPUTE_DB"),
         schema=os.getenv("SNOWFLAKE_SCHEMA", "RAW"),
