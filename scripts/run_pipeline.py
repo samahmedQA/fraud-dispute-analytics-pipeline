@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 import uuid
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -251,7 +252,7 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--s3-bucket",
-        default="fraud-dispute-analytics-sam-23402",
+        default=os.getenv("FRAUD_DISPUTE_S3_BUCKET"),
         help="Target S3 bucket for partitioned raw files.",
     )
 

@@ -1,0 +1,21 @@
+﻿{
+  "QueueConfigurations": [
+    {
+      "Id": "snowpipe-raw-ingestion",
+      "QueueArn": "<SNOWFLAKE_SQS_QUEUE_ARN>",
+      "Events": [
+        "s3:ObjectCreated:*"
+      ],
+      "Filter": {
+        "Key": {
+          "FilterRules": [
+            {
+              "Name": "prefix",
+              "Value": "raw/"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
