@@ -618,3 +618,53 @@ def test_malformed_json_hard_fails_with_validation_report():
         ["line_number"]
         == 2
     )
+
+def test_unexpected_error_is_written_to_pipeline_audit():
+    result = run_command(
+        [
+            "scripts/run_pipeline.py",
+            "--upload-s3",
+            "--s3-bucket",
+            "",
+        ],
+        expect_success=False,
+    )
+
+    assert result.returncode != 0
+    assert "Pipeline failed." in result.stdout
+
+    run_ids = set(
+        RUN_ID_REGEX.findall(
+            result.stdout
+        )
+    )
+
+    assert len(run_ids) == 1
+
+    run_id = run_ids.pop()
+
+    audit_file = (
+        PROJECT_ROOT
+        / "data"
+        / "pipeline_audit_logs"
+        / f"pipeline_run_{run_id}.json"
+    )
+
+    assert audit_file.exists()
+
+    audit = json.loads(
+        audit_file.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert audit["status"] == "FAILED"
+
+    assert audit["failure_reason"] == (
+        "An S3 bucket is required when "
+        "--upload-s3 is used."
+    )
+
+    assert audit["ended_at_utc"] is not None
+    assert audit["duration_seconds"] is not None
+

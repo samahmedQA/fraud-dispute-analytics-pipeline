@@ -570,12 +570,22 @@ def main() -> None:
             "Pipeline completed successfully."
         )
 
-    except (
-        subprocess.CalledProcessError,
-        ValueError,
-    ):
+    except Exception as error:
+        if audit_record["status"] != "FAILED":
+            audit_record["status"] = "FAILED"
+
+        if not audit_record["failure_reason"]:
+            audit_record["failure_reason"] = (
+                f"{type(error).__name__}: {error}"
+            )
+
         print()
         print("Pipeline failed.")
+        print(
+            "Failure reason: "
+            f"{audit_record['failure_reason']}"
+        )
+
         raise
 
     finally:
