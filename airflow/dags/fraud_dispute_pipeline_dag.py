@@ -13,7 +13,7 @@ from airflow.operators.python import PythonOperator
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DBT_PROJECT_DIR = PROJECT_ROOT / "dbt" / "fraud_dispute_dbt"
 
-S3_BUCKET = os.getenv("FRAUD_DISPUTE_S3_BUCKET", "fraud-dispute-analytics-sam-23402")
+S3_BUCKET = os.getenv("FRAUD_DISPUTE_S3_BUCKET")
 DBT_TARGET = os.getenv("DBT_TARGET", "dev")
 
 

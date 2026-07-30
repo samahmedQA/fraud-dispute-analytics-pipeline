@@ -1,27 +1,42 @@
+# Environment variables and secrets
 .env
+.env.*
+!.env.example
+
+# Python virtual environments
 .venv/
-.venv-1/
-.venv-2/
+.venv-*/
+venv/
+env/
 
+# Python cache and test artifacts
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
+# dbt artifacts
 target/
 dbt_packages/
 logs/
 
-data/raw/*.json
-
-.DS_Storedata/s3_partitioned/
-
-data/s3_partitioned/
-data/s3_partitioned/**
-
-aws_*_policy.json
-
-s3_snowpipe_notification_config.json
-data/validation_reports/
+# Generated pipeline data
+data/raw/
+data/validated/
 data/quarantine/
+data/s3_partitioned/
+data/validation_reports/
 data/pipeline_audit_logs/
 
-data/validated/
+# Local infrastructure configuration
+aws_*_policy.json
+s3_snowpipe_notification_config.json
+
+# IDE and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
