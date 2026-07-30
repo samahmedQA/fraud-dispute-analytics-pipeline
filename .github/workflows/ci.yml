@@ -40,10 +40,18 @@ jobs:
         run: |
           python scripts/generate_data.py
 
+      - name: Create pipeline run ID
+        run: |
+          RUN_ID="$(date -u +'%Y%m%dT%H%M%SZ')_$(python -c 'import uuid; print(uuid.uuid4().hex[:8])')"
+          echo "PIPELINE_RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
+          echo "Pipeline Run ID: $RUN_ID"
+
       - name: Validate data contracts
         run: |
-          python scripts/validate_data_contracts.py
+          python scripts/validate_data_contracts.py \
+            --run-id "$PIPELINE_RUN_ID"
 
       - name: Partition validated data for S3 layout
         run: |
-          python scripts/partition_data_for_s3.py
+          python scripts/partition_data_for_s3.py \
+            --run-id "$PIPELINE_RUN_ID"
