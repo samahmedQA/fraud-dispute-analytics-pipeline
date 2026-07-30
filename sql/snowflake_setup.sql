@@ -33,25 +33,40 @@ CREATE FILE FORMAT IF NOT EXISTS JSON_LINES_FORMAT
 
 CREATE TABLE IF NOT EXISTS RAW_CUSTOMERS (
     raw_record VARIANT,
+    pipeline_run_id VARCHAR,
+    source_file VARCHAR,
+    source_row_number NUMBER,
     loaded_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );
 
 CREATE TABLE IF NOT EXISTS RAW_TRANSACTIONS (
     raw_record VARIANT,
+    pipeline_run_id VARCHAR,
+    source_file VARCHAR,
+    source_row_number NUMBER,
     loaded_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );
 
 CREATE TABLE IF NOT EXISTS RAW_FRAUD_SIGNALS (
     raw_record VARIANT,
+    pipeline_run_id VARCHAR,
+    source_file VARCHAR,
+    source_row_number NUMBER,
     loaded_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );
 
 CREATE TABLE IF NOT EXISTS RAW_DISPUTES (
     raw_record VARIANT,
+    pipeline_run_id VARCHAR,
+    source_file VARCHAR,
+    source_row_number NUMBER,
     loaded_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );
 
 CREATE TABLE IF NOT EXISTS RAW_CHARGEBACK_OUTCOMES (
     raw_record VARIANT,
+    pipeline_run_id VARCHAR,
+    source_file VARCHAR,
+    source_row_number NUMBER,
     loaded_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );

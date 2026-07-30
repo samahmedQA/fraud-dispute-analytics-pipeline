@@ -38,4 +38,4 @@ CREATE OR REPLACE STAGE S3_RAW_STAGE
 
 -- Test that Snowflake can see files in S3.
 -- Replace YYYY and MM with an existing partition.
-LIST @S3_RAW_STAGE/transactions/year=YYYY/month=MM/;
+LIST @S3_RAW_STAGE/run_id=<PIPELINE_RUN_ID>/transactions/year=YYYY/month=MM/;

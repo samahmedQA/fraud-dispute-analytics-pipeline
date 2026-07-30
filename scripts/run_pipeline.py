@@ -526,6 +526,8 @@ def main() -> None:
                 "scripts/run_snowflake_sql.py",
                 "--sql-file",
                 args.snowflake_reload_sql,
+                "--run-id",
+                run_id,
             ]
 
             if args.execute_snowflake_reload:
