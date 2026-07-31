@@ -1,0 +1,11 @@
+boto3==1.43.36
+botocore==1.43.36
+dbt-core==1.11.11
+dbt-snowflake==1.11.6
+Faker==40.23.0
+jsonschema==4.26.0
+numpy==2.5.0
+pandas==3.0.3
+python-dotenv==1.2.2
+snowflake-connector-python==4.6.0
+streamlit==1.59.0
