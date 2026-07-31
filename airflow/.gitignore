@@ -1,5 +1,9 @@
 logs/
+config/
+plugins/
+.env
 *.pyc
 __pycache__/
 airflow.db
 webserver_config.py
+simple_auth_manager_passwords*.json*
