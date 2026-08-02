@@ -30,49 +30,124 @@ RUN_ID_PATTERN = re.compile(
 
 
 REFERENCE_RULES = {
+    "transactions": [
+        {
+            "child_fields": (
+                "customer_id",
+            ),
+            "parent_dataset": "customers",
+            "parent_fields": (
+                "customer_id",
+            ),
+        },
+        {
+            "child_fields": (
+                "customer_id",
+                "account_id",
+            ),
+            "parent_dataset": "customers",
+            "parent_fields": (
+                "customer_id",
+                "account_id",
+            ),
+        },
+    ],
+    "fraud_signals": [
+        {
+            "child_fields": (
+                "transaction_id",
+            ),
+            "parent_dataset": "transactions",
+            "parent_fields": (
+                "transaction_id",
+            ),
+        },
+    ],
+    "disputes": [
+        {
+            "child_fields": (
+                "transaction_id",
+            ),
+            "parent_dataset": "transactions",
+            "parent_fields": (
+                "transaction_id",
+            ),
+        },
+    ],
     "chargeback_outcomes": [
         {
-            "child_field": "dispute_id",
+            "child_fields": (
+                "dispute_id",
+            ),
             "parent_dataset": "disputes",
-            "parent_file_name": "disputes.json",
-            "parent_key": "dispute_id",
-        }
-    ]
+            "parent_fields": (
+                "dispute_id",
+            ),
+        },
+    ],
 }
 
 
+# Dictionary order is the validation order.
+# Every parent dataset must be validated before its children.
 DATASETS = {
-    "chargeback_outcomes": {
-        "raw_file_name": "chargeback_outcomes.json",
-        "schema_file": CONTRACTS_DIR / "chargeback_outcomes.schema.json",
-        "primary_key": "chargeback_id",
-        "timestamp_field": "resolved_date",
-    },
     "customers": {
         "raw_file_name": "customers.json",
-        "schema_file": CONTRACTS_DIR / "customers.schema.json",
+        "schema_file": (
+            CONTRACTS_DIR
+            / "customers.schema.json"
+        ),
         "primary_key": "customer_id",
         "timestamp_field": "created_at",
     },
-    "disputes": {
-        "raw_file_name": "disputes.json",
-        "schema_file": CONTRACTS_DIR / "disputes.schema.json",
-        "primary_key": "dispute_id",
-        "timestamp_field": "opened_date",
+    "transactions": {
+        "raw_file_name": "transactions.json",
+        "schema_file": (
+            CONTRACTS_DIR
+            / "transactions.schema.json"
+        ),
+        "primary_key": "transaction_id",
+        "timestamp_field": (
+            "transaction_timestamp"
+        ),
     },
     "fraud_signals": {
         "raw_file_name": "fraud_signals.json",
-        "schema_file": CONTRACTS_DIR / "fraud_signals.schema.json",
+        "schema_file": (
+            CONTRACTS_DIR
+            / "fraud_signals.schema.json"
+        ),
         "primary_key": "transaction_id",
         "timestamp_field": "score_timestamp",
     },
-    "transactions": {
-        "raw_file_name": "transactions.json",
-        "schema_file": CONTRACTS_DIR / "transactions.schema.json",
-        "primary_key": "transaction_id",
-        "timestamp_field": "transaction_timestamp",
+    "disputes": {
+        "raw_file_name": "disputes.json",
+        "schema_file": (
+            CONTRACTS_DIR
+            / "disputes.schema.json"
+        ),
+        "primary_key": "dispute_id",
+        "timestamp_field": "opened_date",
+    },
+    "chargeback_outcomes": {
+        "raw_file_name": (
+            "chargeback_outcomes.json"
+        ),
+        "schema_file": (
+            CONTRACTS_DIR
+            / "chargeback_outcomes.schema.json"
+        ),
+        "primary_key": "chargeback_id",
+        "timestamp_field": "resolved_date",
     },
 }
+
+
+ReferenceKey = tuple[Any, ...]
+ReferenceRegistry = dict[
+    tuple[str, tuple[str, ...]],
+    set[ReferenceKey],
+]
 
 
 def utc_now() -> str:
@@ -459,19 +534,110 @@ def validate_schema(
     )
 
 
-def load_reference_keys(
-    parent_file: Path,
-    parent_key: str,
-) -> set[Any]:
-    parent_records = load_json_lines(
-        parent_file
+def make_reference_key(
+    record: dict[str, Any],
+    fields: tuple[str, ...],
+) -> ReferenceKey | None:
+    values = tuple(
+        record.get(field)
+        for field in fields
     )
 
+    if any(
+        value is None
+        for value in values
+    ):
+        return None
+
+    return values
+
+
+def required_parent_field_sets(
+    dataset_name: str,
+) -> set[tuple[str, ...]]:
     return {
-        record.get(parent_key)
-        for _, record in parent_records
-        if record.get(parent_key) is not None
+        tuple(rule["parent_fields"])
+        for rules in REFERENCE_RULES.values()
+        for rule in rules
+        if (
+            rule["parent_dataset"]
+            == dataset_name
+        )
     }
+
+
+def register_valid_parent_keys(
+    dataset_name: str,
+    valid_records: list[
+        dict[str, Any]
+    ],
+    registry: ReferenceRegistry,
+) -> None:
+    for parent_fields in (
+        required_parent_field_sets(
+            dataset_name
+        )
+    ):
+        keys: set[ReferenceKey] = set()
+
+        for record in valid_records:
+            key = make_reference_key(
+                record,
+                parent_fields,
+            )
+
+            if key is not None:
+                keys.add(key)
+
+        registry[
+            (
+                dataset_name,
+                parent_fields,
+            )
+        ] = keys
+
+
+def select_valid_records(
+    records: list[
+        tuple[int, dict[str, Any]]
+    ],
+    invalid_record_indexes: set[int],
+) -> list[dict[str, Any]]:
+    return [
+        record
+        for index, (_, record)
+        in enumerate(records)
+        if index not in invalid_record_indexes
+    ]
+
+
+def resolve_dataset_dependencies(
+    dataset_name: str,
+) -> tuple[str, ...]:
+    required_datasets: set[str] = set()
+
+    def visit(
+        current_dataset: str,
+    ) -> None:
+        for rule in REFERENCE_RULES.get(
+            current_dataset,
+            [],
+        ):
+            visit(
+                rule["parent_dataset"]
+            )
+
+        required_datasets.add(
+            current_dataset
+        )
+
+    visit(dataset_name)
+
+    return tuple(
+        name
+        for name in DATASETS
+        if name in required_datasets
+    )
 
 
 def validate_referential_integrity(
@@ -480,11 +646,18 @@ def validate_referential_integrity(
         tuple[int, dict[str, Any]]
     ],
     primary_key: str,
-    raw_run_dir: Path,
+    valid_parent_keys: ReferenceRegistry,
+    enforce_relationships: bool = True,
 ) -> tuple[
     list[dict[str, Any]],
     set[int],
 ]:
+    if not enforce_relationships:
+        return (
+            [],
+            set(),
+        )
+
     relationship_rules = (
         REFERENCE_RULES.get(
             dataset_name,
@@ -501,62 +674,98 @@ def validate_referential_integrity(
     ] = set()
 
     for rule in relationship_rules:
-        parent_keys = load_reference_keys(
-            parent_file=(raw_run_dir / rule["parent_file_name"]),
-            parent_key=rule["parent_key"],
+        child_fields = tuple(
+            rule["child_fields"]
         )
-
-        child_field = rule["child_field"]
         parent_dataset = (
             rule["parent_dataset"]
         )
-        parent_key = rule["parent_key"]
+        parent_fields = tuple(
+            rule["parent_fields"]
+        )
+
+        registry_key = (
+            parent_dataset,
+            parent_fields,
+        )
+
+        if registry_key not in valid_parent_keys:
+            raise RuntimeError(
+                "Parent dataset has not been "
+                "validated before child dataset: "
+                f"{parent_dataset} "
+                f"required by {dataset_name}."
+            )
+
+        parent_keys = (
+            valid_parent_keys[
+                registry_key
+            ]
+        )
 
         for index, (
             line_number,
             record,
         ) in enumerate(records):
-            child_value = record.get(
-                child_field
+            child_key = (
+                make_reference_key(
+                    record,
+                    child_fields,
+                )
             )
 
-            if child_value is None:
+            # Required-field and type errors are
+            # reported by JSON Schema validation.
+            if child_key is None:
                 continue
 
-            if child_value not in parent_keys:
-                failures.append(
-                    {
-                        "dataset": dataset_name,
-                        "line_number": (
-                            line_number
-                        ),
-                        "record_id": (
-                            get_record_id(
-                                record,
-                                primary_key,
-                            )
-                        ),
-                        "field": child_field,
-                        "rule": (
-                            "referential_integrity"
-                        ),
-                        "severity": (
-                            "quarantine_continue"
-                        ),
-                        "message": (
-                            f"{dataset_name}."
-                            f"{child_field} value "
-                            f"{child_value} does "
-                            f"not exist in "
-                            f"{parent_dataset}."
-                            f"{parent_key}"
-                        ),
-                    }
-                )
+            if child_key in parent_keys:
+                continue
 
-                invalid_record_indexes.add(
-                    index
-                )
+            child_field_label = (
+                ", ".join(child_fields)
+            )
+
+            parent_field_label = (
+                ", ".join(parent_fields)
+            )
+
+            failures.append(
+                {
+                    "dataset": dataset_name,
+                    "line_number": (
+                        line_number
+                    ),
+                    "record_id": (
+                        get_record_id(
+                            record,
+                            primary_key,
+                        )
+                    ),
+                    "field": (
+                        child_field_label
+                    ),
+                    "rule": (
+                        "referential_integrity"
+                    ),
+                    "severity": (
+                        "quarantine_continue"
+                    ),
+                    "message": (
+                        f"{dataset_name}"
+                        f".({child_field_label}) "
+                        f"value {child_key} does "
+                        "not reference a valid "
+                        f"{parent_dataset}"
+                        f".({parent_field_label}) "
+                        "record."
+                    ),
+                }
+            )
+
+            invalid_record_indexes.add(
+                index
+            )
 
     return (
         failures,
@@ -923,8 +1132,13 @@ def validate_dataset(
     validated_run_dir: Path,
     quarantine_run_dir: Path,
     reports_run_dir: Path,
+    valid_parent_keys: ReferenceRegistry,
+    enforce_relationships: bool = True,
     input_file_override: str | None = None,
-) -> str:
+) -> tuple[
+    str,
+    list[dict[str, Any]],
+]:
     raw_file = (
         Path(input_file_override)
         if input_file_override
@@ -1064,7 +1278,10 @@ def validate_dataset(
         )
         print()
 
-        return batch_status
+        return (
+            batch_status,
+            [],
+        )
 
     schema = load_schema(
         config["schema_file"]
@@ -1100,7 +1317,12 @@ def validate_dataset(
         dataset_name=dataset_name,
         records=records,
         primary_key=primary_key,
-        raw_run_dir=raw_run_dir,
+        valid_parent_keys=(
+            valid_parent_keys
+        ),
+        enforce_relationships=(
+            enforce_relationships
+        ),
     )
 
     warnings = (
@@ -1152,6 +1374,13 @@ def validate_dataset(
         schema_invalid_indexes
         | duplicate_invalid_indexes
         | relationship_invalid_indexes
+    )
+
+    valid_records = select_valid_records(
+        records=records,
+        invalid_record_indexes=(
+            invalid_record_indexes
+        ),
     )
 
     if hard_failures:
@@ -1235,9 +1464,8 @@ def validate_dataset(
             pipeline_action
         ),
         "total_records": len(records),
-        "valid_records": (
-            len(records)
-            - len(invalid_record_indexes)
+        "valid_records": len(
+            valid_records
         ),
         "invalid_records": len(
             invalid_record_indexes
@@ -1328,7 +1556,10 @@ def validate_dataset(
 
     print()
 
-    return batch_status
+    return (
+        batch_status,
+        valid_records,
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -1379,16 +1610,24 @@ def main() -> None:
 
     if not args.run_id and not args.input_file:
         raise SystemExit(
-            "--run-id is required unless --input-file is used."
+            "--run-id is required unless "
+            "--input-file is used."
         )
 
-    run_id = args.run_id or generate_run_id()
-    raw_run_dir = RAW_DATA_ROOT / run_id
-
-    requires_raw_snapshot = (
-        not args.input_file
-        or args.dataset in REFERENCE_RULES
+    run_id = (
+        args.run_id
+        or generate_run_id()
     )
+
+    raw_run_dir = (
+        RAW_DATA_ROOT
+        / run_id
+    )
+
+    # Fixture overrides validate one standalone file.
+    # They do not require a complete run snapshot.
+    requires_raw_snapshot = not args.input_file
+
     if requires_raw_snapshot:
         load_and_verify_raw_manifest(
             run_id=run_id,
@@ -1411,8 +1650,8 @@ def main() -> None:
         / "invalid_records"
     )
 
-    # A repeated run ID should produce a clean,
-    # deterministic set of output files.
+    # A repeated run ID should produce a
+    # clean, deterministic output set.
     for output_dir in (
         validated_run_dir,
         reports_run_dir,
@@ -1447,18 +1686,54 @@ def main() -> None:
         "Validation reports: "
         f"{reports_run_dir}"
     )
+
+    enforce_relationships = (
+        not args.input_file
+    )
+
+    if (
+        args.input_file
+        and args.dataset
+        in REFERENCE_RULES
+    ):
+        print(
+            "Relationship validation skipped: "
+            "input-file fixture mode does not "
+            "load parent datasets."
+        )
+
     print()
 
     overall_status = "PASSED"
 
     if args.dataset:
-        datasets_to_run = {
-            args.dataset: (
-                DATASETS[args.dataset]
+        if (
+            args.run_id
+            and not args.input_file
+        ):
+            dataset_names = (
+                resolve_dataset_dependencies(
+                    args.dataset
+                )
             )
+        else:
+            dataset_names = (
+                args.dataset,
+            )
+
+        datasets_to_run = {
+            dataset_name: (
+                DATASETS[dataset_name]
+            )
+            for dataset_name
+            in dataset_names
         }
     else:
         datasets_to_run = DATASETS
+
+    valid_parent_keys: (
+        ReferenceRegistry
+    ) = {}
 
     for (
         dataset_name,
@@ -1466,11 +1741,17 @@ def main() -> None:
     ) in datasets_to_run.items():
         dataset_input_file = (
             args.input_file
-            if args.dataset == dataset_name
+            if (
+                args.dataset
+                == dataset_name
+            )
             else None
         )
 
-        dataset_status = validate_dataset(
+        (
+            dataset_status,
+            valid_records,
+        ) = validate_dataset(
             run_id=run_id,
             dataset_name=dataset_name,
             config=config,
@@ -1484,9 +1765,21 @@ def main() -> None:
             reports_run_dir=(
                 reports_run_dir
             ),
+            valid_parent_keys=(
+                valid_parent_keys
+            ),
+            enforce_relationships=(
+                enforce_relationships
+            ),
             input_file_override=(
                 dataset_input_file
             ),
+        )
+
+        register_valid_parent_keys(
+            dataset_name=dataset_name,
+            valid_records=valid_records,
+            registry=valid_parent_keys,
         )
 
         if dataset_status == "FAILED":
