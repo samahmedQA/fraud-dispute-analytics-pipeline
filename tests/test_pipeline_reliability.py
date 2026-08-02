@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import shutil
+
+import hashlib
+
 import json
 import re
 import subprocess
@@ -354,14 +358,28 @@ def test_hard_fail_blocks_schema_invalid_transactions():
 
 
 def test_quarantine_path_partitions_only_valid_records():
-    run_command(
-        ["scripts/generate_data.py"]
-    )
-
-    raw_chargebacks_file = (
+    raw_run_dir = (
         PROJECT_ROOT
         / "data"
         / "raw"
+        / QUARANTINE_RUN_ID
+    )
+
+    shutil.rmtree(
+        raw_run_dir,
+        ignore_errors=True,
+    )
+
+    run_command(
+        [
+            "scripts/generate_data.py",
+            "--run-id",
+            QUARANTINE_RUN_ID,
+        ]
+    )
+
+    raw_chargebacks_file = (
+        raw_run_dir
         / "chargeback_outcomes.json"
     )
 
@@ -372,95 +390,135 @@ def test_quarantine_path_partitions_only_valid_records():
         / "bad_chargeback_outcomes.json"
     )
 
-    original_raw_data = (
-        raw_chargebacks_file.read_bytes()
+    raw_chargebacks_file.write_bytes(
+        fixture_file.read_bytes()
     )
 
-    try:
-        raw_chargebacks_file.write_bytes(
-            fixture_file.read_bytes()
-        )
+    manifest_path = (
+        raw_run_dir
+        / "raw_manifest.json"
+    )
 
-        result = run_command(
-            [
-                "scripts/"
-                "validate_data_contracts.py",
-                "--run-id",
-                QUARANTINE_RUN_ID,
-            ]
+    manifest = json.loads(
+        manifest_path.read_text(
+            encoding="utf-8"
         )
+    )
 
-        assert (
-            "Status: "
-            "PASSED_WITH_QUARANTINE"
-            in result.stdout
+    chargeback_metadata = (
+        manifest["files"]
+        ["chargeback_outcomes"]
+    )
+
+    chargeback_metadata["record_count"] = (
+        count_jsonl_lines(
+            raw_chargebacks_file
         )
+    )
+    chargeback_metadata["file_size_bytes"] = (
+        raw_chargebacks_file.stat().st_size
+    )
+    chargeback_metadata["sha256"] = (
+        hashlib.sha256(
+            raw_chargebacks_file.read_bytes()
+        ).hexdigest()
+    )
 
-        assert (
-            "Pipeline Action: "
-            "UPLOAD_VALID_RECORDS_ONLY"
-            in result.stdout
+    manifest["total_record_count"] = sum(
+        metadata["record_count"]
+        for metadata
+        in manifest["files"].values()
+    )
+
+    manifest_path.write_text(
+        json.dumps(
+            manifest,
+            indent=2,
+            sort_keys=True,
         )
+        + "\n",
+        encoding="utf-8",
+    )
 
-        assert (
-            "Invalid Records: 1"
-            in result.stdout
+    result = run_command(
+        [
+            "scripts/"
+            "validate_data_contracts.py",
+            "--run-id",
+            QUARANTINE_RUN_ID,
+        ]
+    )
+
+    assert (
+        "Status: "
+        "PASSED_WITH_QUARANTINE"
+        in result.stdout
+    )
+
+    assert (
+        "Pipeline Action: "
+        "UPLOAD_VALID_RECORDS_ONLY"
+        in result.stdout
+    )
+
+    assert (
+        "Invalid Records: 1"
+        in result.stdout
+    )
+
+    validated_file = (
+        validated_file_path(
+            QUARANTINE_RUN_ID,
+            "chargeback_outcomes",
         )
+    )
 
-        validated_file = (
-            validated_file_path(
-                QUARANTINE_RUN_ID,
-                "chargeback_outcomes",
-            )
+    assert validated_file.exists()
+
+    assert (
+        count_jsonl_lines(
+            validated_file
         )
+        == 1
+    )
 
-        assert validated_file.exists()
+    run_command(
+        [
+            "scripts/"
+            "partition_data_for_s3.py",
+            "--run-id",
+            QUARANTINE_RUN_ID,
+        ]
+    )
 
-        assert (
-            count_jsonl_lines(
-                validated_file
-            )
-            == 1
+    partitioned_contents = (
+        read_partitioned_dataset(
+            QUARANTINE_RUN_ID,
+            "chargeback_outcomes",
         )
+    )
 
-        run_command(
-            [
-                "scripts/"
-                "partition_data_for_s3.py",
-                "--run-id",
-                QUARANTINE_RUN_ID,
-            ]
-        )
+    assert (
+        "DISP_9999999"
+        not in partitioned_contents
+    )
 
-        partitioned_contents = (
-            read_partitioned_dataset(
-                QUARANTINE_RUN_ID,
-                "chargeback_outcomes",
-            )
+    assert (
+        count_partitioned_dataset_lines(
+            QUARANTINE_RUN_ID,
+            "chargeback_outcomes",
         )
-
-        assert (
-            "DISP_9999999"
-            not in partitioned_contents
-        )
-
-        assert (
-            count_partitioned_dataset_lines(
-                QUARANTINE_RUN_ID,
-                "chargeback_outcomes",
-            )
-            == 1
-        )
-
-    finally:
-        raw_chargebacks_file.write_bytes(
-            original_raw_data
-        )
+        == 1
+    )
 
 
 def test_partitioning_reads_validated_data_not_raw_data():
     run_command(
-        ["scripts/generate_data.py"]
+        [
+            "scripts/generate_data.py",
+            "--run-id",
+            VALIDATED_ONLY_RUN_ID,
+        ]
     )
 
     run_command(
@@ -476,6 +534,7 @@ def test_partitioning_reads_validated_data_not_raw_data():
         PROJECT_ROOT
         / "data"
         / "raw"
+        / VALIDATED_ONLY_RUN_ID
         / "chargeback_outcomes.json"
     )
 
