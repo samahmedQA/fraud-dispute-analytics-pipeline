@@ -37,7 +37,8 @@
     },
     "resolved_date": {
       "type": "string",
-      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "format": "pipeline-date"
     },
     "representment_required": {
       "type": "boolean"

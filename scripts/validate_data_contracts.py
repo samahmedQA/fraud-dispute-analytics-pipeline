@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -162,6 +162,64 @@ def generate_run_id() -> str:
     short_uuid = uuid.uuid4().hex[:8]
 
     return f"{timestamp}_{short_uuid}"
+
+
+SEMANTIC_FORMAT_CHECKER = FormatChecker()
+
+
+def matches_datetime_format(
+    value: object,
+    expected_format: str,
+) -> bool:
+    """
+    Validate both the shape and calendar meaning of a date/time string.
+
+    Returning True for non-string values allows JSON Schema's type
+    validation to report the appropriate type failure separately.
+    """
+    if not isinstance(value, str):
+        return True
+
+    try:
+        parsed_value = datetime.strptime(
+            value,
+            expected_format,
+        )
+    except ValueError:
+        return False
+
+    return (
+        parsed_value.strftime(expected_format)
+        == value
+    )
+
+
+@SEMANTIC_FORMAT_CHECKER.checks(
+    "pipeline-date"
+)
+def is_pipeline_date(
+    value: object,
+) -> bool:
+    """Validate YYYY-MM-DD as a real calendar date."""
+    return matches_datetime_format(
+        value,
+        "%Y-%m-%d",
+    )
+
+
+@SEMANTIC_FORMAT_CHECKER.checks(
+    "pipeline-date-time"
+)
+def is_pipeline_date_time(
+    value: object,
+) -> bool:
+    """
+    Validate YYYY-MM-DD HH:MM:SS as a real timestamp.
+    """
+    return matches_datetime_format(
+        value,
+        "%Y-%m-%d %H:%M:%S",
+    )
 
 
 def validate_run_id(run_id: str) -> str:
@@ -345,7 +403,8 @@ def validate_schema(
     set[int],
 ]:
     validator = Draft202012Validator(
-        schema
+        schema,
+        format_checker=SEMANTIC_FORMAT_CHECKER,
     )
 
     failures: list[
