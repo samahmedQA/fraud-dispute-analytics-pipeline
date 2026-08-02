@@ -7,5 +7,8 @@ select
     raw_record:account_status::string as account_status,
     raw_record:state::string as state,
     raw_record:created_at::timestamp as created_at,
+    pipeline_run_id,
+    source_file,
+    source_row_number,
     loaded_at
 from {{ source('fraud_raw', 'RAW_CUSTOMERS') }}

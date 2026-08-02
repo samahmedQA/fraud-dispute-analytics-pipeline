@@ -9,5 +9,8 @@ select
     raw_record:velocity_count::number as velocity_count,
     raw_record:model_version::string as model_version,
     raw_record:score_timestamp::timestamp as score_timestamp,
+    pipeline_run_id,
+    source_file,
+    source_row_number,
     loaded_at
 from {{ source('fraud_raw', 'RAW_FRAUD_SIGNALS') }}
