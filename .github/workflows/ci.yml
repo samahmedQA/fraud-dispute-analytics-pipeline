@@ -53,16 +53,17 @@ jobs:
         run: |
           python -m pytest tests -q
 
-      - name: Generate synthetic data
-        run: |
-          python scripts/generate_data.py
-
       - name: Create pipeline run ID
         shell: bash
         run: |
           RUN_ID="$(date -u +'%Y%m%dT%H%M%SZ')_$(python -c 'import uuid; print(uuid.uuid4().hex[:8])')"
           echo "PIPELINE_RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
           echo "Pipeline Run ID: $RUN_ID"
+
+      - name: Generate synthetic data
+        run: |
+          python scripts/generate_data.py \
+            --run-id "$PIPELINE_RUN_ID"
 
       - name: Validate data contracts
         run: |

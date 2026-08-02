@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -15,7 +16,7 @@ from jsonschema import Draft202012Validator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
+RAW_DATA_ROOT = PROJECT_ROOT / "data" / "raw"
 VALIDATED_DATA_ROOT = PROJECT_ROOT / "data" / "validated"
 CONTRACTS_DIR = PROJECT_ROOT / "contracts" / "v1"
 QUARANTINE_ROOT = PROJECT_ROOT / "data" / "quarantine"
@@ -33,7 +34,7 @@ REFERENCE_RULES = {
         {
             "child_field": "dispute_id",
             "parent_dataset": "disputes",
-            "parent_file": RAW_DATA_DIR / "disputes.json",
+            "parent_file_name": "disputes.json",
             "parent_key": "dispute_id",
         }
     ]
@@ -42,66 +43,34 @@ REFERENCE_RULES = {
 
 DATASETS = {
     "chargeback_outcomes": {
-        "raw_file": (
-            RAW_DATA_DIR
-            / "chargeback_outcomes.json"
-        ),
-        "schema_file": (
-            CONTRACTS_DIR
-            / "chargeback_outcomes.schema.json"
-        ),
+        "raw_file_name": "chargeback_outcomes.json",
+        "schema_file": CONTRACTS_DIR / "chargeback_outcomes.schema.json",
         "primary_key": "chargeback_id",
         "timestamp_field": "resolved_date",
     },
     "customers": {
-        "raw_file": (
-            RAW_DATA_DIR
-            / "customers.json"
-        ),
-        "schema_file": (
-            CONTRACTS_DIR
-            / "customers.schema.json"
-        ),
+        "raw_file_name": "customers.json",
+        "schema_file": CONTRACTS_DIR / "customers.schema.json",
         "primary_key": "customer_id",
         "timestamp_field": "created_at",
     },
     "disputes": {
-        "raw_file": (
-            RAW_DATA_DIR
-            / "disputes.json"
-        ),
-        "schema_file": (
-            CONTRACTS_DIR
-            / "disputes.schema.json"
-        ),
+        "raw_file_name": "disputes.json",
+        "schema_file": CONTRACTS_DIR / "disputes.schema.json",
         "primary_key": "dispute_id",
         "timestamp_field": "opened_date",
     },
     "fraud_signals": {
-        "raw_file": (
-            RAW_DATA_DIR
-            / "fraud_signals.json"
-        ),
-        "schema_file": (
-            CONTRACTS_DIR
-            / "fraud_signals.schema.json"
-        ),
+        "raw_file_name": "fraud_signals.json",
+        "schema_file": CONTRACTS_DIR / "fraud_signals.schema.json",
         "primary_key": "transaction_id",
         "timestamp_field": "score_timestamp",
     },
     "transactions": {
-        "raw_file": (
-            RAW_DATA_DIR
-            / "transactions.json"
-        ),
-        "schema_file": (
-            CONTRACTS_DIR
-            / "transactions.schema.json"
-        ),
+        "raw_file_name": "transactions.json",
+        "schema_file": CONTRACTS_DIR / "transactions.schema.json",
         "primary_key": "transaction_id",
-        "timestamp_field": (
-            "transaction_timestamp"
-        ),
+        "timestamp_field": "transaction_timestamp",
     },
 }
 
@@ -112,6 +81,78 @@ def utc_now() -> str:
         .isoformat()
         .replace("+00:00", "Z")
     )
+
+
+def calculate_sha256(file_path: Path) -> str:
+    digest = hashlib.sha256()
+    with file_path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def load_and_verify_raw_manifest(
+    run_id: str,
+    raw_run_dir: Path,
+) -> dict[str, Any]:
+    if not raw_run_dir.is_dir():
+        raise SystemExit(
+            "Raw-data directory does not exist for run ID "
+            f"{run_id}: {raw_run_dir}"
+        )
+
+    manifest_path = raw_run_dir / "raw_manifest.json"
+    if not manifest_path.is_file():
+        raise SystemExit(
+            "Raw-data manifest does not exist for run ID "
+            f"{run_id}: {manifest_path}"
+        )
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise SystemExit(
+            f"Raw-data manifest is invalid JSON: {manifest_path}: {error}"
+        ) from error
+
+    if manifest.get("run_id") != run_id:
+        raise SystemExit(
+            "Raw manifest run ID does not match requested run ID "
+            f"{run_id}."
+        )
+
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        raise SystemExit("Raw-data manifest has no valid files object.")
+
+    for dataset_name, config in DATASETS.items():
+        metadata = files.get(dataset_name)
+        if not isinstance(metadata, dict):
+            raise SystemExit(
+                f"Raw-data manifest is missing dataset {dataset_name}."
+            )
+
+        file_name = config["raw_file_name"]
+        if metadata.get("file_name") != file_name:
+            raise SystemExit(
+                f"Raw-data manifest file mismatch for {dataset_name}."
+            )
+
+        file_path = raw_run_dir / file_name
+        if not file_path.is_file():
+            raise SystemExit(f"Raw-data file is missing: {file_path}")
+
+        if file_path.stat().st_size != metadata.get("file_size_bytes"):
+            raise SystemExit(
+                f"Raw-data file size does not match manifest: {file_path}"
+            )
+
+        if calculate_sha256(file_path) != metadata.get("sha256"):
+            raise SystemExit(
+                f"Raw-data file hash does not match manifest: {file_path}"
+            )
+
+    return manifest
 
 
 def generate_run_id() -> str:
@@ -380,6 +421,7 @@ def validate_referential_integrity(
         tuple[int, dict[str, Any]]
     ],
     primary_key: str,
+    raw_run_dir: Path,
 ) -> tuple[
     list[dict[str, Any]],
     set[int],
@@ -401,7 +443,7 @@ def validate_referential_integrity(
 
     for rule in relationship_rules:
         parent_keys = load_reference_keys(
-            parent_file=rule["parent_file"],
+            parent_file=(raw_run_dir / rule["parent_file_name"]),
             parent_key=rule["parent_key"],
         )
 
@@ -818,6 +860,7 @@ def validate_dataset(
     run_id: str,
     dataset_name: str,
     config: dict[str, Any],
+    raw_run_dir: Path,
     validated_run_dir: Path,
     quarantine_run_dir: Path,
     reports_run_dir: Path,
@@ -826,7 +869,7 @@ def validate_dataset(
     raw_file = (
         Path(input_file_override)
         if input_file_override
-        else config["raw_file"]
+        else raw_run_dir / config["raw_file_name"]
     )
 
     try:
@@ -998,6 +1041,7 @@ def validate_dataset(
         dataset_name=dataset_name,
         records=records,
         primary_key=primary_key,
+        raw_run_dir=raw_run_dir,
     )
 
     warnings = (
@@ -1274,10 +1318,23 @@ def main() -> None:
             "using --input-file."
         )
 
-    run_id = (
-        args.run_id
-        or generate_run_id()
+    if not args.run_id and not args.input_file:
+        raise SystemExit(
+            "--run-id is required unless --input-file is used."
+        )
+
+    run_id = args.run_id or generate_run_id()
+    raw_run_dir = RAW_DATA_ROOT / run_id
+
+    requires_raw_snapshot = (
+        not args.input_file
+        or args.dataset in REFERENCE_RULES
     )
+    if requires_raw_snapshot:
+        load_and_verify_raw_manifest(
+            run_id=run_id,
+            raw_run_dir=raw_run_dir,
+        )
 
     validated_run_dir = (
         VALIDATED_DATA_ROOT
@@ -1358,6 +1415,7 @@ def main() -> None:
             run_id=run_id,
             dataset_name=dataset_name,
             config=config,
+            raw_run_dir=raw_run_dir,
             validated_run_dir=(
                 validated_run_dir
             ),

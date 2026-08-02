@@ -47,6 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     run_parser.add_argument(
+        "--run-id",
+        type=validate_run_id,
+        help="Optional pipeline run ID. Required with --skip-generate.",
+    )
+    run_parser.add_argument(
         "--skip-generate",
         action="store_true",
         help="Use existing files in data/raw instead of regenerating data.",
@@ -190,6 +195,9 @@ def validate_command_args(
     args: argparse.Namespace,
 ) -> None:
     if args.command == "run":
+        if args.skip_generate and not args.run_id:
+            parser.error("--skip-generate requires --run-id")
+
         if args.execute_s3 and not args.upload_s3:
             parser.error("--execute-s3 requires --upload-s3")
 
@@ -234,6 +242,9 @@ def build_command(
             sys.executable,
             "scripts/run_pipeline.py",
         ]
+
+        if args.run_id:
+            command.extend(["--run-id", args.run_id])
 
         if args.skip_generate:
             command.append("--skip-generate")

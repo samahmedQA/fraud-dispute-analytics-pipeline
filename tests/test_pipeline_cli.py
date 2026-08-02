@@ -46,6 +46,8 @@ def test_run_command_maps_clear_options_to_legacy_flags():
     args = parse_cli_args(
         [
             "run",
+            "--run-id",
+            RUN_ID,
             "--skip-generate",
             "--upload-s3",
             "--bucket",
@@ -65,6 +67,8 @@ def test_run_command_maps_clear_options_to_legacy_flags():
     assert command == [
         sys.executable,
         "scripts/run_pipeline.py",
+        "--run-id",
+        RUN_ID,
         "--skip-generate",
         "--upload-s3",
         "--s3-bucket",
@@ -80,6 +84,17 @@ def test_run_command_maps_clear_options_to_legacy_flags():
     ]
     assert cwd == PROJECT_ROOT
 
+
+
+
+def test_run_rejects_skip_generate_without_run_id():
+    with pytest.raises(SystemExit):
+        parse_cli_args(
+            [
+                "run",
+                "--skip-generate",
+            ]
+        )
 
 def test_run_rejects_execute_s3_without_upload():
     with pytest.raises(SystemExit):

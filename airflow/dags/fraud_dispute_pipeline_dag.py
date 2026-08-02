@@ -96,7 +96,10 @@ def fraud_dispute_analytics_pipeline() -> None:
             "python",
             "scripts/generate_data.py",
         ],
-        command=None,
+        command=[
+            "--run-id",
+            RUN_ID_XCOM,
+        ],
         **docker_task_settings(),
     )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -16,6 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DBT_PROJECT_DIR = PROJECT_ROOT / "dbt" / "fraud_dispute_dbt"
 AUDIT_DIR = PROJECT_ROOT / "data" / "pipeline_audit_logs"
 VALIDATION_REPORTS_DIR = PROJECT_ROOT / "data" / "validation_reports"
+RUN_ID_PATTERN = re.compile(r"^\d{8}T\d{6}Z_[0-9a-f]{8}$")
 
 
 def utc_now() -> str:
@@ -26,6 +28,14 @@ def generate_run_id() -> str:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     short_uuid = uuid.uuid4().hex[:8]
     return f"{timestamp}_{short_uuid}"
+
+
+def validate_run_id(run_id: str) -> str:
+    if not RUN_ID_PATTERN.fullmatch(run_id):
+        raise argparse.ArgumentTypeError(
+            "run ID must match YYYYMMDDTHHMMSSZ_aaaaaaaa"
+        )
+    return run_id
 
 
 def safe_count(value: Any) -> int:
@@ -168,7 +178,7 @@ def load_validation_summary(run_id: str) -> dict[str, Any]:
 def create_audit_record(
     args: argparse.Namespace,
 ) -> dict[str, Any]:
-    run_id = generate_run_id()
+    run_id = args.run_id or generate_run_id()
 
     return {
         "run_id": run_id,
@@ -343,6 +353,14 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--run-id",
+        type=validate_run_id,
+        help=(
+            "Optional pipeline run ID. Required with --skip-generate."
+        ),
+    )
+
+    parser.add_argument(
         "--skip-generate",
         action="store_true",
         help=(
@@ -435,6 +453,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+
+    if args.skip_generate and not args.run_id:
+        raise SystemExit(
+            "--skip-generate requires --run-id so the pipeline "
+            "knows which raw snapshot to reuse."
+        )
+
     audit_record = create_audit_record(args)
     run_id = audit_record["run_id"]
     pipeline_timer = time.perf_counter()
@@ -454,6 +479,8 @@ def main() -> None:
                 command=[
                     sys.executable,
                     "scripts/generate_data.py",
+                    "--run-id",
+                    run_id,
                 ],
                 audit_record=audit_record,
             )
