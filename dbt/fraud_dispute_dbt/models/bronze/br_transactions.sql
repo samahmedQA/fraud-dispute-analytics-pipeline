@@ -11,5 +11,8 @@ select
     raw_record:card_network::string as card_network,
     raw_record:merchant_category::string as merchant_category,
     raw_record:country::string as country,
+    pipeline_run_id,
+    source_file,
+    source_row_number,
     loaded_at
 from {{ source('fraud_raw', 'RAW_TRANSACTIONS') }}

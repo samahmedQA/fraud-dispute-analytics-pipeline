@@ -9,5 +9,8 @@ select
     raw_record:dispute_status::string as dispute_status,
     raw_record:opened_date::timestamp as opened_date,
     raw_record:card_network::string as card_network,
+    pipeline_run_id,
+    source_file,
+    source_row_number,
     loaded_at
 from {{ source('fraud_raw', 'RAW_DISPUTES') }}

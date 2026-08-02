@@ -8,5 +8,8 @@ select
     raw_record:final_amount::number(12,2) as final_amount,
     raw_record:resolved_date::timestamp as resolved_date,
     raw_record:representment_required::boolean as representment_required,
+    pipeline_run_id,
+    source_file,
+    source_row_number,
     loaded_at
 from {{ source('fraud_raw', 'RAW_CHARGEBACK_OUTCOMES') }}
