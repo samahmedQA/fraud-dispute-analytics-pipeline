@@ -7,7 +7,7 @@ dependencies. Each data-processing stage runs in the existing
 `fraud-dispute-pipeline:local` image through `DockerOperator`, preserving the
 pipeline's hash-locked application dependencies.
 
-## Workflow
+## Implemented workflow
 
 ```text
 create_pipeline_run_id
@@ -22,9 +22,29 @@ validate_data_contracts
 partition_validated_data
 ```
 
-The same run ID is passed to validation and partitioning through Airflow XCom.
-Dataset files are not stored in XCom. They remain in the shared named Docker
-volume `fraud-dispute-pipeline-data`.
+One run ID is created at the beginning and passed to generation, validation,
+and partitioning through XCom templating. Generated datasets are written to
+`data/raw/<run_id>/` in the shared Docker volume. Dataset payloads are never
+stored in XCom.
+
+The DAG intentionally stops after local partitioning. S3 publication,
+Snowflake loading, and dbt are available through `scripts/pipeline.py`, but
+they are not currently Airflow tasks.
+
+## Reliability settings
+
+The local DAG includes:
+
+- two retries per Docker task
+- a one-minute retry delay
+- ten-minute task execution timeouts
+- a thirty-minute DAG-run timeout
+- `max_active_runs=1`
+- a shared run-scoped data volume
+
+Run-scoped storage provides the data isolation. `max_active_runs=1` is an
+additional local resource and scheduling safeguard, not the primary
+concurrency control.
 
 ## Local-only security warning
 
@@ -69,7 +89,7 @@ docker compose `
   build
 ```
 
-## 3. Initialize the metadata database and shared data volume
+## 3. Initialize metadata and the shared data volume
 
 ```powershell
 docker compose `
@@ -103,7 +123,7 @@ Open `http://localhost:8080`.
 The DAG starts paused. Unpause `fraud_dispute_analytics_pipeline`, trigger it
 manually, and inspect the graph and task logs.
 
-## 5. Verify DAG discovery
+## 5. Verify DAG discovery and import health
 
 ```powershell
 docker compose `
@@ -111,6 +131,14 @@ docker compose `
   --file airflow/docker-compose.yml `
   exec airflow-dag-processor `
   airflow dags list
+```
+
+```powershell
+docker compose `
+  --env-file airflow/.env `
+  --file airflow/docker-compose.yml `
+  exec airflow-dag-processor `
+  airflow dags list-import-errors
 ```
 
 ## 6. Inspect service logs

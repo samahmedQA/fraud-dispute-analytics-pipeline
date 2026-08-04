@@ -1,8 +1,8 @@
-\# Data Contract Failure Policy
+# Data Contract Failure Policy
 
 
 
-\## Purpose
+## Purpose
 
 
 
@@ -18,7 +18,7 @@ The pipeline uses versioned JSON Schema contracts to validate raw source files b
 
 
 
-\## Contract Version
+## Contract Version
 
 
 

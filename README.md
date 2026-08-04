@@ -322,7 +322,9 @@ Current successful pytest result:
 
 ## Data Contracts and Failure Handling
 
-The pipeline includes versioned JSON Schema contracts to validate raw source data before records continue into the validated data layer, S3-style partitioned output, and Snowflake.
+The pipeline uses versioned JSON Schema contracts to validate one immutable,
+run-scoped raw snapshot before records continue into validated output,
+partitioned storage, S3, and Snowflake.
 
 Contract location:
 
@@ -340,22 +342,33 @@ disputes.schema.json
 chargeback_outcomes.schema.json
 ```
 
-These contracts enforce:
+The validation layer enforces:
 
-- Required fields
-- Expected data types
-- Valid enum values
-- ID patterns
-- Date and timestamp formats
-- Numeric boundaries
+- Required fields and expected data types
+- Valid enum values, ID patterns, and numeric boundaries
+- Real calendar dates and timestamps, not regex shape alone
+- Duplicate primary-key detection
+- Cross-dataset and customer/account referential integrity
+- Validation against schema-valid parent records
+- Severity-based hard-fail, quarantine, and warning policies
 
-Validation command:
+Use the stage-oriented CLI with an existing raw snapshot:
 
 ```powershell
-python scripts/validate_data_contracts.py
+$runId = "20260731T190000Z_a1b2c3d4"
+
+python scripts/pipeline.py validate `
+  --run-id $runId
 ```
 
----
+The validator reads only:
+
+```text
+data/raw/<run_id>/
+```
+
+Before validating records, it verifies `raw_manifest.json`, including the run
+ID, expected files, file sizes, and SHA-256 hashes.
 
 ## Severity-Based Failure Design
 
@@ -380,13 +393,13 @@ This proves the pipeline can distinguish between:
 Validation reports are written to:
 
 ```text
-data/validation_reports/
+data/validation_reports/<run_id>/
 ```
 
 Invalid records are written to:
 
 ```text
-data/quarantine/invalid_records/
+data/quarantine/<run_id>/invalid_records/
 ```
 
 Validated records are written to:
@@ -421,7 +434,7 @@ Only validated records are partitioned into the S3-style layout. This prevents q
 Each validation run writes an audit record to:
 
 ```text
-data/validation_reports/validation_audit_log.jsonl
+data/validation_reports/<run_id>/validation_audit_log.jsonl
 ```
 
 Each audit record includes:
@@ -563,39 +576,48 @@ Expected RAW row counts after loading:
 
 ## Snowflake SQL Runner
 
-The project includes a reusable Snowflake SQL runner:
+The guarded Snowflake RAW loader is exposed through the stage-oriented CLI.
+It loads one published S3 batch identified by a pipeline run ID.
+
+Dry run:
+
+```powershell
+$runId = "20260731T190000Z_a1b2c3d4"
+
+python scripts/pipeline.py load-snowflake `
+  --run-id $runId
+```
+
+Execute the load:
+
+```powershell
+python scripts/pipeline.py load-snowflake `
+  --run-id $runId `
+  --execute
+```
+
+The default SQL file is:
 
 ```text
-scripts/run_snowflake_sql.py
+sql/load_raw_from_s3.sql
 ```
 
-Dry-run command:
+The loader stages data into temporary tables and validates row counts, source
+file counts, pipeline run IDs, and source lineage before replacing the active
+RAW tables. The removed legacy loader is intentionally not supported.
+
+The same guarded stage can be invoked through the end-to-end command. External
+systems remain dry-run by default:
 
 ```powershell
-python scripts/run_snowflake_sql.py --sql-file sql/load_raw_from_s3.sql
+python scripts/pipeline.py run `
+  --run-id $runId `
+  --skip-generate `
+  --load-snowflake
 ```
 
-Dry-run mode previews SQL statements without executing them. This is important because the RAW reload script performs write operations against the RAW schema after staging data in temporary tables first.
-
-Execute command:
-
-```powershell
-python scripts/run_snowflake_sql.py --sql-file sql/load_raw_from_s3.sql --execute
-```
-
-The SQL runner is also wired into the local pipeline:
-
-```powershell
-python scripts/run_pipeline.py --skip-generate --reload-snowflake
-```
-
-To execute the Snowflake reload through the pipeline:
-
-```powershell
-python scripts/run_pipeline.py --skip-generate --reload-snowflake --execute-snowflake-reload
-```
-
----
+Add `--execute-snowflake` only when credentials and the target Snowflake
+environment are configured.
 
 ## Controlled Snowflake RAW Reload Strategy
 
@@ -650,39 +672,43 @@ This validates an event-driven ingestion pattern in addition to the manual S3 ba
 
 ## Airflow Orchestration DAG
 
-The project includes an Airflow DAG:
+The repository includes a local Airflow baseline DAG:
 
 ```text
 airflow/dags/fraud_dispute_pipeline_dag.py
 ```
 
-Task flow:
+Current task flow:
 
 ```text
-generate_synthetic_data
+create_pipeline_run_id
+→ generate_synthetic_data
 → validate_data_contracts
-→ partition_raw_data_for_s3
-→ preview_s3_upload
-→ preview_snowflake_raw_reload
-→ run_dbt_build
+→ partition_validated_data
 ```
 
-The DAG keeps orchestration separate from business logic. Individual project scripts handle the work, while Airflow is responsible for task ordering and dependency management.
+Airflow creates one run ID and passes it to generation, validation, and
+partitioning. Dataset files remain in the shared Docker volume rather than
+XCom; XCom carries only the run ID.
 
-The DAG uses safe defaults:
+The current DAG intentionally ends after local partitioning. S3 publication,
+Snowflake loading, and dbt are implemented in the stage-oriented CLI but are
+not currently automated by this DAG. This keeps the local Airflow
+demonstration focused and avoids presenting planned tasks as implemented.
 
-```text
-S3 upload step: dry-run preview
-Snowflake RAW reload step: dry-run preview
-```
+The Compose environment uses retries, execution timeouts, one active DAG run,
+PostgreSQL metadata, a scheduler, an API server, and a DAG processor. It is a
+local portfolio environment, not a production deployment.
 
-Syntax validation:
+Syntax check:
 
 ```powershell
-python -m py_compile airflow\dags\fraud_dispute_pipeline_dag.py
+python -m py_compile `
+  airflow/dags/fraud_dispute_pipeline_dag.py
 ```
 
----
+Full local setup and security limitations are documented in
+`airflow/README.md`.
 
 ## GitHub Actions CI
 
@@ -813,47 +839,80 @@ Update the copied file with your local Snowflake values.
 
 Do not commit your real `profiles.yml`.
 
-### 4. Generate synthetic data
+### 4. Create a run ID for stage-by-stage execution
 
 ```powershell
-python scripts\generate_data.py
+$timestamp = [DateTime]::UtcNow.ToString(
+  "yyyyMMddTHHmmssZ"
+)
+
+$suffix = [guid]::NewGuid().
+  ToString("N").
+  Substring(0, 8)
+
+$runId = "${timestamp}_${suffix}"
+
+Write-Host "Pipeline Run ID: $runId"
 ```
 
-### 5. Validate data contracts
+### 5. Generate one immutable raw snapshot
 
 ```powershell
-python scripts\validate_data_contracts.py
+python scripts/generate_data.py `
+  --run-id $runId
 ```
 
-### 6. Partition validated files for S3
+Generated files are written to `data/raw/<run_id>/` with a
+`raw_manifest.json` containing row counts, file sizes, the deterministic seed,
+and SHA-256 hashes.
+
+### 6. Validate data contracts
 
 ```powershell
-python scripts\partition_data_for_s3.py
+python scripts/pipeline.py validate `
+  --run-id $runId
 ```
 
-### 7. Preview S3 upload
+### 7. Partition validated files for S3
 
 ```powershell
-python scripts\upload_partitioned_to_s3.py --bucket <your-bucket-name>
+python scripts/pipeline.py partition `
+  --run-id $runId
 ```
 
-### 8. Run full safe local pipeline
+### 8. Preview S3 publication
 
 ```powershell
-python scripts\run_pipeline.py --skip-generate --upload-s3 --s3-bucket <your-bucket-name> --reload-snowflake --run-dbt
+python scripts/pipeline.py upload-s3 `
+  --run-id $runId `
+  --bucket <your-bucket-name>
 ```
 
-### 9. Run dbt build directly
+The upload command is a dry run unless `--execute` is provided.
+
+### 9. Run the full safe local pipeline
+
+To create a new run automatically:
 
 ```powershell
-cd dbt\fraud_dispute_dbt
-python -c "from dbt.cli.main import cli; cli()" build
+python scripts/pipeline.py run
 ```
 
-### 10. Run pytest reliability tests
+To replay the exact raw snapshot created above:
 
 ```powershell
-python -m pytest tests\test_pipeline_reliability.py -v
+python scripts/pipeline.py run `
+  --run-id $runId `
+  --skip-generate
+```
+
+External S3 and Snowflake stages remain dry-run unless their explicit execute
+flags are provided.
+
+### 10. Run the automated test suite
+
+```powershell
+python -m pytest tests -q
 ```
 
 ### 11. Generate dbt docs
