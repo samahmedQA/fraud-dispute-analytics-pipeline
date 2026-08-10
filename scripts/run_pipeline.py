@@ -500,7 +500,7 @@ def main() -> None:
 
         run_step(
             step_name=(
-                "Partition raw data for S3"
+                "Partition validated data for S3"
             ),
             command=[
                 sys.executable,

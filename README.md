@@ -6,7 +6,7 @@ End-to-end fintech data engineering project that simulates fraud, dispute, and c
 
 Built with **Python, AWS S3, Snowflake, dbt, Airflow, GitHub Actions, pytest, and Streamlit**.
 
-Includes **data contracts, validated output handling, quarantine handling, audit logs, dbt tests, pytest reliability tests, monitoring, Snowpipe POC, and safe dry-run controls** for external systems.
+Includes **data contracts, validated output handling, quarantine handling, audit logs, dbt tests, pytest reliability tests, monitoring, a Snowpipe configuration POC, and safe dry-run controls** for external systems.
 
 > This is a production-style portfolio project using fully synthetic data. It does not contain company data, customer data, credentials, or secrets.
 
@@ -32,12 +32,12 @@ Includes **data contracts, validated output handling, quarantine handling, audit
   - `MONITORING`
 - Built **dbt bronze, silver, and gold models** for fraud, dispute, chargeback, and monitoring use cases.
 - Created business-ready marts for fraud KPIs, dispute trends, chargeback win/loss rates, and resolution timing.
-- Implemented **26 dbt data tests across 12 models** with a successful build result of `PASS=38, WARN=0, ERROR=0`.
+- Built **13 dbt models** across bronze, silver, gold, and monitoring layers, with schema tests and custom lineage tests.
 - Added **pytest reliability tests** for validation, quarantine handling, and partitioning behavior.
 - Added **GitHub Actions CI** to run safe automated checks and pytest tests on pull requests.
 - Added validation reports, quarantine outputs, validation audit logs, and full pipeline run audit logs.
 - Added an **Airflow DAG** to represent production-style orchestration.
-- Added a **Snowpipe auto-ingest proof of concept** for event-driven ingestion.
+- Added **Snowpipe auto-ingest configuration as a proof of concept** for an event-driven ingestion pattern; live auto-ingestion is not claimed.
 - Added a safe `profiles.yml.example` for dbt onboarding without exposing credentials.
 - Updated the Streamlit dashboard to use configured Snowflake database settings from environment variables.
 
@@ -65,7 +65,7 @@ This project simulates that workflow by creating trusted reporting tables for:
 | Language | Python, SQL |
 | Cloud Storage | AWS S3 |
 | Data Warehouse | Snowflake |
-| Ingestion | S3 batch loading, Snowpipe auto-ingest POC |
+| Ingestion | S3 batch loading, Snowpipe configuration POC |
 | Transformation | dbt |
 | Orchestration | Airflow DAG, local pipeline runner |
 | CI/CD | GitHub Actions |
@@ -89,7 +89,7 @@ flowchart TD
     F["Analytics Outputs<br/>Streamlit + Monitoring"]
     G["Quarantine + Validation Reports<br/>hard_fail · quarantine_continue · warn_continue"]
     I["GitHub Actions CI<br/>compile + pytest + validation"]
-    J["Snowpipe POC"]
+    J["Snowpipe Config POC"]
 
     A -->|"raw JSON"| B
     B -->|"valid records"| V
@@ -105,7 +105,7 @@ flowchart TD
 
 The pipeline starts with synthetic fintech data generation, validates raw data through versioned contracts, writes clean records to `data/validated/`, partitions validated records into an S3-style raw zone, loads JSON into Snowflake RAW tables, and transforms the data through dbt bronze, silver, and gold models.
 
-Supporting components include Airflow orchestration, GitHub Actions CI, pytest reliability tests, pipeline audit logs, validation reports, quarantine handling, monitoring tables, Streamlit dashboarding, and a Snowpipe auto-ingest proof of concept.
+Supporting components include Airflow orchestration, GitHub Actions CI, pytest reliability tests, pipeline audit logs, validation reports, quarantine handling, monitoring tables, Streamlit dashboarding, and a Snowpipe configuration proof of concept.
 
 ---
 
@@ -295,16 +295,7 @@ The project includes dbt tests for:
 - Accepted values
 - Relationship integrity between transactions, disputes, and chargebacks
 
-Current successful dbt build result:
-
-```text
-PASS=38
-WARN=0
-ERROR=0
-SKIP=0
-NO-OP=0
-TOTAL=38
-```
+The repository includes dbt schema tests and custom lineage tests. A current live dbt build result is not claimed here because dbt execution depends on a configured Snowflake target.
 
 The project also includes pytest reliability tests for pipeline behavior:
 
@@ -534,7 +525,7 @@ Validate raw data
 → Write pipeline audit log
 ```
 
-The S3 and Snowflake steps are protected by dry-run defaults.
+The S3 and Snowflake steps are protected by dry-run defaults. The S3 dry run validates local publication preparation only; it does not contact AWS or prove live S3 behavior.
 
 | Step | Default Behavior | Execute Flag |
 |---|---|---|
@@ -644,11 +635,11 @@ This is different from a fully append-only production ingestion strategy. In pro
 
 ---
 
-## Snowpipe Auto-Ingest Proof of Concept
+## Snowpipe Auto-Ingest Configuration Proof of Concept
 
-The project includes a Snowpipe auto-ingest test flow.
+The repository includes Snowpipe SQL and configuration artifacts that illustrate an auto-ingest pattern. Live S3 event delivery and Snowpipe auto-ingestion are not independently proven by this repository.
 
-Snowpipe test workflow:
+Intended Snowpipe workflow:
 
 ```text
 New JSON file uploaded to S3
@@ -666,7 +657,7 @@ Test objects:
 | `PIPE_TRANSACTIONS_SNOWPIPE_TEST` | Snowpipe object configured with `AUTO_INGEST = TRUE` |
 | `raw/snowpipe_test/transactions/` | S3 test prefix used for Snowpipe event notifications |
 
-This validates an event-driven ingestion pattern in addition to the manual S3 batch load process.
+This demonstrates the intended event-driven ingestion design alongside the manual S3 batch-load implementation; it does not claim independently verified live auto-ingestion.
 
 ---
 
@@ -943,7 +934,7 @@ Completed:
 - Snowflake RAW JSON loading from S3
 - Controlled Snowflake RAW reload script
 - Reusable Snowflake SQL runner
-- Snowpipe auto-ingest proof of concept
+- Snowpipe auto-ingest configuration proof of concept
 - dbt bronze models
 - dbt silver enrichment models
 - dbt gold KPI marts
