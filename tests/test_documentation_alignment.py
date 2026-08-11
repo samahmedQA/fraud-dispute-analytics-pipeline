@@ -100,7 +100,7 @@ def test_sample_audit_commands_are_run_scoped():
         "Validate data contracts"
     ]
     partition_command = commands[
-        "Partition raw data for S3"
+        "Partition validated data for S3"
     ]
 
     assert "--run-id" in validate_command

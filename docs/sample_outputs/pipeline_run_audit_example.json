@@ -38,7 +38,7 @@
       "failure_reason": null
     },
     {
-      "step_name": "Partition raw data for S3",
+      "step_name": "Partition validated data for S3",
       "command": "<PROJECT_ROOT>\\.venv\\Scripts\\python.exe scripts/partition_data_for_s3.py --run-id 20260804T160626Z_54e54235",
       "started_at_utc": "2026-08-04T16:06:36.606485Z",
       "ended_at_utc": "2026-08-04T16:06:37.470784Z",
