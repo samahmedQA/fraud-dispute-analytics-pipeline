@@ -33,29 +33,13 @@ The platform is intentionally batch-oriented at V1 scale. The engineering focus 
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    GEN["Synthetic Data Generation"]
-    RAW["Immutable Raw Snapshot<br/>run ID + manifest + SHA-256"]
-    DQ["Data Quality Gate"]
-    VALID["Validated Data"]
-    QUAR["Quarantine + Reports"]
-    PART["Run-Scoped Partitioning"]
-    S3["Idempotent S3 Publication"]
-    SNOW["Guarded Snowflake Load"]
-    DBT["dbt<br/>Bronze - Silver - Gold"]
-    OUT["Analytics + Monitoring"]
-
-    GEN --> RAW
-    RAW --> DQ
-    DQ -->|valid| VALID
-    DQ -->|invalid| QUAR
-    VALID --> PART
-    PART --> S3
-    S3 --> SNOW
-    SNOW --> DBT
-    DBT --> OUT
-```
+<p align="center">
+  <img
+    src="docs/images/data-platform-architecture.png"
+    alt="Fraud & Dispute Analytics Data Platform architecture"
+    width="100%"
+  />
+</p>
 
 **Execution & Controls**
 
@@ -191,6 +175,68 @@ For stage-by-stage commands and external-system configuration, continue into the
 ---
 
 # Technical Deep Dive
+
+## Technical Pipeline Flow
+
+The portfolio architecture above is intentionally optimized for quick scanning. The diagram below exposes the implementation boundaries and control paths in more detail.
+
+```mermaid
+flowchart LR
+    GEN["Deterministic Synthetic Generation"]
+    RAW["Immutable Raw Snapshot<br/>data/raw/&lt;run_id&gt;/"]
+    VERIFY["Manifest + SHA-256 Verification"]
+    DQ["Data Contracts + Quality Gate<br/>schema · semantic · duplicate · referential"]
+
+    VALID["Validated Records<br/>data/validated/&lt;run_id&gt;/"]
+    QUAR["Quarantine<br/>invalid records"]
+    REPORT["Validation Reports"]
+
+    PART["Run-Scoped Partitioning<br/>data/s3_partitioned/&lt;run_id&gt;/"]
+    S3["Idempotent S3 Publication<br/>raw/run_id=&lt;run_id&gt;/...<br/>manifest + completion marker"]
+
+    TMP["Temporary Snowflake RAW Load"]
+    GUARD["Load Guardrails<br/>rows · files · run ID · lineage"]
+    PROMOTE["Guarded Transactional Promotion<br/>Active RAW Tables"]
+
+    DBT["dbt<br/>Bronze → Silver → Gold"]
+    OUT["Analytics + Monitoring<br/>Streamlit"]
+
+    GEN --> RAW
+    RAW --> VERIFY
+    VERIFY --> DQ
+
+    DQ -->|valid| VALID
+    DQ -->|invalid| QUAR
+    DQ -. audit outcome .-> REPORT
+
+    VALID --> PART
+    PART --> S3
+    S3 --> TMP
+    TMP --> GUARD
+    GUARD --> PROMOTE
+    PROMOTE --> DBT
+    DBT --> OUT
+
+    CLI["Stage-Oriented CLI<br/>external mutations dry-run by default"]
+    CLI -. controls .-> GEN
+    CLI -. controls .-> S3
+    CLI -. controls .-> TMP
+    CLI -. controls .-> DBT
+
+    AF["Airflow<br/>create_pipeline_run_id<br/>→ generate_synthetic_data<br/>→ validate_data_contracts<br/>→ partition_validated_data"]
+    AF -. orchestrates current local scope .-> PART
+
+    CI["GitHub Actions + Docker<br/>tests + safe local verification"]
+    CI -. verifies .-> DQ
+
+    SNOWPIPE["Snowpipe Configuration POC<br/>not part of active V1 path<br/>live auto-ingestion not claimed"]
+```
+
+The **solid arrows** represent the active data path. Dashed connections represent control, orchestration, verification, or audit behavior rather than data movement. The Snowpipe configuration POC is intentionally isolated because it is not part of the active V1 ingestion path.
+
+The current Airflow DAG ends after `partition_validated_data`; S3 publication, Snowflake loading, and dbt remain available through the stage-oriented CLI but are **not current Airflow tasks**.
+
+---
 
 ## Run-Scoped Data Lifecycle
 
