@@ -1,78 +1,33 @@
-# Fraud & Dispute Analytics Pipeline
+# Fraud & Dispute Analytics Data Platform
 
-## TL;DR
+[![CI](https://github.com/samahmedQA/fraud-dispute-analytics-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/samahmedQA/fraud-dispute-analytics-pipeline/actions/workflows/ci.yml)
 
-End-to-end fintech data engineering project that simulates fraud, dispute, and chargeback analytics across **23,540 synthetic records**.
+Production-style batch data platform for fraud, disputes, and chargebacks, designed around **reproducibility, data quality, lineage, idempotent publication, guarded warehouse loading, and recoverability** rather than simply connecting services together.
 
-Built with **Python, AWS S3, Snowflake, dbt, Airflow, GitHub Actions, pytest, and Streamlit**.
+The platform generates and processes **23,540 synthetic fintech records** across **5 source datasets** governed by **5 versioned contracts**, preserves immutable run-scoped inputs, validates data before external side effects, and carries pipeline lineage into Snowflake and downstream dbt models.
 
-Includes **data contracts, validated output handling, quarantine handling, audit logs, dbt tests, pytest reliability tests, monitoring, a Snowpipe configuration POC, and safe dry-run controls** for external systems.
+**Data Platform V1 release tag:** `v1.0.0-data-platform`
 
-> This is a production-style portfolio project using fully synthetic data. It does not contain company data, customer data, credentials, or secrets.
-
----
-
-## Project Highlights
-
-- Generated **23,540 synthetic fintech records** across customers, transactions, fraud signals, disputes, and chargeback outcomes.
-- Seeded synthetic data generation for reproducible local and CI runs.
-- Added **versioned JSON Schema data contracts** before ingestion.
-- Designed severity-based validation behavior with:
-  - `hard_fail`
-  - `quarantine_continue`
-  - `warn_continue`
-- Added a **validated data layer** under `data/validated/` so only clean records continue downstream.
-- Implemented quarantine handling so invalid records are separated from valid records before S3-style partitioning.
-- Designed an **S3-style partitioned raw zone** by dataset, year, and month.
-- Loaded semi-structured JSON into **Snowflake RAW tables** using external stage patterns.
-- Aligned the Snowflake bootstrap script with the project schemas:
-  - `RAW`
-  - `STAGING`
-  - `MARTS`
-  - `MONITORING`
-- Built **dbt bronze, silver, and gold models** for fraud, dispute, chargeback, and monitoring use cases.
-- Created business-ready marts for fraud KPIs, dispute trends, chargeback win/loss rates, and resolution timing.
-- Built **13 dbt models** across bronze, silver, gold, and monitoring layers, with schema tests and custom lineage tests.
-- Added **pytest reliability tests** for validation, quarantine handling, and partitioning behavior.
-- Added **GitHub Actions CI** to run safe automated checks and pytest tests on pull requests.
-- Added validation reports, quarantine outputs, validation audit logs, and full pipeline run audit logs.
-- Added an **Airflow DAG** to represent production-style orchestration.
-- Added **Snowpipe auto-ingest configuration as a proof of concept** for an event-driven ingestion pattern; live auto-ingestion is not claimed.
-- Added a safe `profiles.yml.example` for dbt onboarding without exposing credentials.
-- Updated the Streamlit dashboard to use configured Snowflake database settings from environment variables.
+> This is a portfolio project built entirely with synthetic data. It contains no company data, customer data, credentials, or secrets.
 
 ---
 
-## Business Problem
+## At a Glance
 
-A fintech company needs reliable analytics to monitor fraud risk, dispute volume, chargeback outcomes, win/loss rates, average resolution time, and pipeline health across card networks.
+| Metric | Data Platform V1 |
+|---|---:|
+| Synthetic records | **23,540** |
+| Source datasets | **5** |
+| Versioned JSON Schema contracts | **5** |
+| pytest cases | **80** |
+| dbt models | **13** |
+| Gold models | **5** |
+| Snowflake schemas | **4** |
+| External-system execution | **Dry-run by default** |
 
-This project simulates that workflow by creating trusted reporting tables for:
+**Technology stack:** Python · AWS S3 · Snowflake · dbt · Apache Airflow · Docker · GitHub Actions · pytest · Streamlit
 
-- Fraud risk by card network
-- Daily fraud KPIs
-- Dispute and chargeback outcomes
-- Chargeback win/loss rates
-- Average dispute resolution time
-- Pipeline row-count monitoring
-
----
-
-## Tech Stack
-
-| Category | Tools |
-|---|---|
-| Language | Python, SQL |
-| Cloud Storage | AWS S3 |
-| Data Warehouse | Snowflake |
-| Ingestion | S3 batch loading, Snowpipe configuration POC |
-| Transformation | dbt |
-| Orchestration | Airflow DAG, local pipeline runner |
-| CI/CD | GitHub Actions |
-| Testing | pytest, dbt tests |
-| Dashboard | Streamlit |
-| Data Quality | JSON Schema contracts, quarantine handling, validation reports |
-| Version Control | Git, GitHub |
+The platform is intentionally batch-oriented at V1 scale. The engineering focus is reliable execution: stable inputs, explicit run identity, validation boundaries, safe replay, failure isolation, guarded publication, and auditable outcomes.
 
 ---
 
@@ -80,250 +35,228 @@ This project simulates that workflow by creating trusted reporting tables for:
 
 ```mermaid
 flowchart TD
-    A["Python Synthetic Data<br/>23,540 Records"]
-    B["Data Contracts<br/>Validation Gate"]
-    V["Validated Records<br/>data/validated/"]
-    C["Partitioned S3-Style Raw Zone"]
-    D["Snowflake RAW<br/>External Stage + VARIANT JSON"]
-    E["dbt Models<br/>Bronze → Silver → Gold"]
-    F["Analytics Outputs<br/>Streamlit + Monitoring"]
-    G["Quarantine + Validation Reports<br/>hard_fail · quarantine_continue · warn_continue"]
-    I["GitHub Actions CI<br/>compile + pytest + validation"]
-    J["Snowpipe Config POC"]
+    GEN["Deterministic Synthetic Generation"]
+    RAW["Immutable Raw Snapshot<br/>data/raw/&lt;run_id&gt;/<br/>manifest + SHA-256"]
+    DQ["Data Contracts + Quality Gate<br/>schema · semantic · duplicate · referential"]
+    VALID["Validated Records<br/>data/validated/&lt;run_id&gt;/"]
+    QUAR["Quarantine + Validation Reports"]
+    PART["Run-Scoped Partitioning<br/>data/s3_partitioned/&lt;run_id&gt;/"]
+    S3["Idempotent S3 Publication<br/>raw/run_id=&lt;run_id&gt;/..."]
+    TMP["Temporary Snowflake RAW Load"]
+    GUARD["Load Guardrails<br/>rows · files · run ID · lineage"]
+    RAWDB["Transactional RAW Promotion"]
+    DBT["dbt<br/>Bronze → Silver → Gold"]
+    OUT["Analytics + Monitoring<br/>Streamlit"]
 
-    A -->|"raw JSON"| B
-    B -->|"valid records"| V
-    B -->|"invalid records"| G
-    V -->|"partitioned JSON"| C
-    C -->|"S3 load pattern"| D
-    D -->|"typed models"| E
-    E -->|"gold KPI marts"| F
+    GEN --> RAW
+    RAW --> DQ
+    DQ -->|valid| VALID
+    DQ -->|invalid / warnings| QUAR
+    VALID --> PART
+    PART --> S3
+    S3 --> TMP
+    TMP --> GUARD
+    GUARD --> RAWDB
+    RAWDB --> DBT
+    DBT --> OUT
 
-    I -. "tests pipeline behavior" .-> B
-    J -. "event-driven test" .-> D
+    CLI["Stage-Oriented CLI<br/>safe external dry-run defaults"] -. controls .-> GEN
+    CLI -. controls .-> S3
+    CLI -. controls .-> TMP
+    CLI -. controls .-> DBT
+
+    AF["Airflow scope<br/>create_pipeline_run_id<br/>→ generate_synthetic_data<br/>→ validate_data_contracts<br/>→ partition_validated_data"] -. orchestrates local stages .-> PART
+
+    CI["GitHub Actions + Docker<br/>tests + safe local verification"] -. verifies .-> DQ
 ```
 
-The pipeline starts with synthetic fintech data generation, validates raw data through versioned contracts, writes clean records to `data/validated/`, partitions validated records into an S3-style raw zone, loads JSON into Snowflake RAW tables, and transforms the data through dbt bronze, silver, and gold models.
-
-Supporting components include Airflow orchestration, GitHub Actions CI, pytest reliability tests, pipeline audit logs, validation reports, quarantine handling, monitoring tables, Streamlit dashboarding, and a Snowpipe configuration proof of concept.
+The stage-oriented CLI represents the full V1 execution path and keeps external mutations opt-in. The current Airflow DAG is deliberately narrower: it creates one run ID, generates the raw snapshot, validates it, and partitions validated records. **Airflow does not currently orchestrate S3 publication, Snowflake loading, or dbt.**
 
 ---
 
-## Data Sources
+## Key Engineering Decisions
 
-The project generates five synthetic datasets.
+| Decision | Engineering rationale |
+|---|---|
+| **Immutable run-scoped raw snapshots** | A replay reads the same owned input batch instead of whatever files happen to exist later. |
+| **Deterministic generation + manifest verification** | A seeded run can be reproduced, while row counts, file sizes, and SHA-256 hashes detect changed or incomplete input snapshots. |
+| **Validation before external side effects** | Contract and integrity failures are resolved before the pipeline can mutate S3 or Snowflake. |
+| **Severity-aware data quality** | Structural corruption, quarantinable relationship failures, and operational warnings produce different pipeline actions instead of one generic failure mode. |
+| **Valid-parent-only referential integrity** | A child record cannot pass integrity checks merely because its referenced parent exists physically; the parent must itself be valid. |
+| **Composite customer/account integrity** | The pipeline validates the `customer_id` + `account_id` relationship, preventing individually valid identifiers from forming an invalid pair. |
+| **Run-scoped lineage** | `pipeline_run_id`, source file, source row number, and load metadata make warehouse records traceable back to a specific batch and source record. |
+| **Idempotent S3 publication** | Completed identical run prefixes can be recognized safely; partial or conflicting prefixes are blocked unless replacement is explicit. |
+| **Guarded Snowflake promotion** | Data first lands in temporary RAW tables and must satisfy row, file, run-ID, and lineage checks before active RAW data is replaced. |
+| **Dry-run external execution** | S3 and Snowflake mutations require explicit execute flags, making local development and CI safe by default. |
+| **Recoverable, auditable runs** | Run IDs, validation reports, quarantine outputs, step-level audit records, and failure metadata preserve enough context to diagnose and replay a batch. |
+
+These choices are the core of the project: the platform is designed around what happens when data is wrong, a run is replayed, a publication is incomplete, or the same batch is executed again.
+
+---
+
+## Platform Demo
+
+> Visual evidence is intentionally deferred to a separate README screenshot PR after this information-architecture change is reviewed.
+
+<!-- README PR #2: Streamlit analytics screenshot -->
+<!-- README PR #2: GitHub Actions CI screenshot -->
+<!-- README PR #2: Snowflake batch-lineage screenshot -->
+<!-- README PR #2: Airflow DAG execution screenshot -->
+
+---
+
+## Business Problem
+
+A fintech data platform needs trustworthy analytics for fraud risk, dispute volume, chargeback outcomes, win/loss rates, resolution timing, and pipeline health across card networks.
+
+This project simulates that domain and builds reliable reporting layers for:
+
+- Fraud risk and transaction activity by card network
+- Daily fraud KPIs
+- Dispute and chargeback outcomes
+- Chargeback win/loss rates
+- Average dispute resolution time
+- Pipeline and batch-level monitoring
+
+The analytical outputs matter, but V1 is primarily an engineering project: it demonstrates how data is generated, validated, published, loaded, traced, and recovered before it becomes a dashboard metric.
+
+---
+
+## Data Model & Scale
+
+The platform generates five related synthetic datasets.
 
 | Dataset | Description | Records |
 |---|---|---:|
-| customers | Customer and account profile data | 1,500 |
-| transactions | Card transaction activity | 10,000 |
-| fraud_signals | Fraud scores, rules, device risk, and velocity signals | 10,000 |
-| disputes | Customer dispute records | 1,200 |
-| chargeback_outcomes | Chargeback outcomes, final amounts, and resolution dates | 840 |
+| `customers` | Customer and account profile data | 1,500 |
+| `transactions` | Card transaction activity | 10,000 |
+| `fraud_signals` | Fraud scores, rules, device risk, and velocity signals | 10,000 |
+| `disputes` | Customer dispute records | 1,200 |
+| `chargeback_outcomes` | Chargeback outcomes, final amounts, and resolution dates | 840 |
 | **Total** |  | **23,540** |
 
----
-
-## Validated Data Flow
-
-The validation step creates a clean handoff between raw generated data and partitioned output.
+Core relationships are intentionally cross-dataset:
 
 ```text
-data/raw/
-→ validation
-→ data/validated/
-→ data/s3_partitioned/raw/
+customers
+   │ customer_id + account_id
+   ▼
+transactions ─────────────► fraud_signals
+   │ transaction_id
+   ▼
+disputes
+   │ dispute_id
+   ▼
+chargeback_outcomes
 ```
 
-This prevents quarantined records from continuing into the S3-style partitioned output.
-
-Generated validated files are ignored by Git.
-
-```text
-data/validated/
-```
+This gives the validation layer meaningful integrity work rather than five independent files.
 
 ---
 
-## S3-Style Raw Zone Layout
+## Quick Start
 
-Validated files are organized by dataset, year, and month.
+### 1. Install the reproducible development environment
 
-```text
-raw/
-├── customers/
-│   └── year=YYYY/month=MM/
-├── transactions/
-│   └── year=YYYY/month=MM/
-├── fraud_signals/
-│   └── year=YYYY/month=MM/
-├── disputes/
-│   └── year=YYYY/month=MM/
-└── chargeback_outcomes/
-    └── year=YYYY/month=MM/
-```
-
-This layout supports cleaner backfills, dataset-level loading, and future automation.
-
----
-
-## Snowflake Layout
-
-The Snowflake database is organized into four schemas.
-
-| Schema | Purpose |
-|---|---|
-| RAW | Stores raw JSON records as VARIANT data |
-| STAGING | Stores bronze and silver dbt models |
-| MARTS | Stores business-ready gold reporting tables |
-| MONITORING | Stores pipeline observability tables |
-
-The Snowflake bootstrap script creates the core database objects required by the project:
-
-```text
-sql/snowflake_setup.sql
-```
-
-It creates:
-
-```text
-FRAUD_DISPUTE_WH
-FRAUD_DISPUTE_DB
-RAW
-STAGING
-MARTS
-MONITORING
-JSON_LINES_FORMAT
-RAW_CUSTOMERS
-RAW_TRANSACTIONS
-RAW_FRAUD_SIGNALS
-RAW_DISPUTES
-RAW_CHARGEBACK_OUTCOMES
-```
-
----
-
-## Environment Strategy
-
-The project supports separation between development and staging Snowflake targets.
-
-| Environment | Snowflake Database | Purpose |
-|---|---|---|
-| DEV | FRAUD_DISPUTE_DB | Primary development and experimentation environment |
-| STG | FRAUD_DISPUTE_STG | Clean staging validation environment |
-| PROD | Planned template | Future protected deployment pattern |
-
-Each environment follows the same schema layout:
-
-```text
-RAW
-STAGING
-MARTS
-MONITORING
-```
-
----
-
-## dbt Configuration
-
-The real dbt profile should live outside the repo:
-
-```text
-~/.dbt/profiles.yml
-```
-
-A safe example is included for onboarding:
-
-```text
-dbt/fraud_dispute_dbt/profiles.yml.example
-```
-
-The example uses placeholder values only and should be copied into the local dbt profile location before running dbt.
-
-Do not commit real Snowflake credentials.
-
----
-
-## dbt Model Layers
-
-### Bronze
-
-Bronze models flatten raw JSON records into typed relational columns.
-
-Models:
-
-- `br_customers`
-- `br_transactions`
-- `br_fraud_signals`
-- `br_disputes`
-- `br_chargeback_outcomes`
-
-### Silver
-
-Silver models join and enrich the bronze data.
-
-Models:
-
-- `silver_transactions_enriched`
-- `silver_dispute_outcomes`
-
-The silver transaction model joins transactions, customers, and fraud signals into an enriched transaction-level table. It also creates a high-risk transaction flag based on fraud score and risk level.
-
-The silver dispute model joins disputes to enriched transactions and chargeback outcomes to create a clean dispute-level reporting table.
-
-### Gold
-
-Gold models are business-ready marts for reporting and dashboards.
-
-Models:
-
-- `gold_fraud_summary_by_network`
-- `gold_dispute_chargeback_summary_by_network`
-- `gold_daily_fraud_kpis`
-- `gold_daily_dispute_kpis`
-
-These marts support reporting on transaction volume, fraud risk, dispute volume, chargeback outcomes, win rates, and resolution timing.
-
----
-
-## Data Quality
-
-The project includes dbt tests for:
-
-- Not-null checks
-- Unique primary keys
-- Accepted values
-- Relationship integrity between transactions, disputes, and chargebacks
-
-The repository includes dbt schema tests and custom lineage tests. A current live dbt build result is not claimed here because dbt execution depends on a configured Snowflake target.
-
-The project also includes pytest reliability tests for pipeline behavior:
+From the repository root:
 
 ```powershell
-python -m pytest tests\test_pipeline_reliability.py -v
+python -m pip install --require-hashes -r requirements-dev.lock.txt
 ```
 
-Current successful pytest result:
+The hash-locked development file is the preferred installation path for reproducing the environment used by CI. External AWS, Snowflake, and dbt execution still require local configuration and credentials.
 
-```text
-4 passed
+### 2. Run the safe local pipeline
+
+```powershell
+python scripts/pipeline.py run
 ```
+
+The default run performs local generation, validation, and partitioning. External S3 and Snowflake stages are not executed unless they are explicitly requested and their execute flags are supplied.
+
+### 3. Replay an existing immutable raw snapshot
+
+Replace the example with a real run ID already present under `data/raw/<run_id>/`:
+
+```powershell
+$runId = "20260731T190000Z_a1b2c3d4"
+
+python scripts/pipeline.py run `
+  --run-id $runId `
+  --skip-generate
+```
+
+### 4. Run the automated tests
+
+```powershell
+python -m pytest tests -q
+```
+
+The repository contains **80 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, referential integrity, S3 idempotency, Snowflake load guardrails, dbt lineage assertions, supported loader behavior, and documentation alignment.
+
+For stage-by-stage commands and external-system configuration, continue into the technical deep dive below.
 
 ---
 
-## Data Contracts and Failure Handling
+# Technical Deep Dive
 
-The pipeline uses versioned JSON Schema contracts to validate one immutable,
-run-scoped raw snapshot before records continue into validated output,
-partitioned storage, S3, and Snowflake.
+## Run-Scoped Data Lifecycle
 
-Contract location:
+Every batch is owned by a pipeline run ID with the format:
+
+```text
+YYYYMMDDTHHMMSSZ_aaaaaaaa
+```
+
+The local lifecycle is run scoped:
+
+```text
+data/raw/<run_id>/
+        │
+        │ raw_manifest.json + source JSONL
+        ▼
+contract and integrity validation
+        │
+        ├──────────────► data/validation_reports/<run_id>/
+        ├──────────────► data/quarantine/<run_id>/invalid_records/
+        │
+        ▼
+data/validated/<run_id>/
+        │
+        ▼
+data/s3_partitioned/<run_id>/raw/<dataset>/year=YYYY/month=MM/
+        │
+        ▼
+s3://<bucket>/raw/run_id=<run_id>/<dataset>/year=YYYY/month=MM/...
+```
+
+Only validated records are eligible for partitioning. A quarantined record does not silently continue downstream.
+
+The stage-oriented CLI exposes the lifecycle directly:
+
+```powershell
+$runId = "20260731T190000Z_a1b2c3d4"
+
+python scripts/pipeline.py validate `
+  --run-id $runId
+
+python scripts/pipeline.py partition `
+  --run-id $runId
+```
+
+The end-to-end local runner also writes a run-level audit record so the final status and failed step are recoverable after execution.
+
+---
+
+## Data Contracts & Quality Gates
+
+Versioned JSON Schema contracts live under:
 
 ```text
 contracts/v1/
 ```
 
-Contracts exist for all five raw datasets:
+There are five V1 contracts:
 
 ```text
 customers.schema.json
@@ -333,53 +266,30 @@ disputes.schema.json
 chargeback_outcomes.schema.json
 ```
 
-The validation layer enforces:
+Validation covers more than JSON shape. The pipeline enforces:
 
 - Required fields and expected data types
-- Valid enum values, ID patterns, and numeric boundaries
-- Real calendar dates and timestamps, not regex shape alone
+- Enum values, identifier patterns, and numeric boundaries
+- Real calendar dates and timestamps rather than regex shape alone
 - Duplicate primary-key detection
-- Cross-dataset and customer/account referential integrity
-- Validation against schema-valid parent records
+- Cross-dataset referential integrity
+- Composite `customer_id` / `account_id` integrity
+- Validation against **schema-valid parent records**
 - Severity-based hard-fail, quarantine, and warning policies
 
-Use the stage-oriented CLI with an existing raw snapshot:
+Before dataset validation begins, the validator verifies the raw snapshot manifest for the requested run. That prevents validation from unknowingly reading a missing, modified, or mismatched raw batch.
 
-```powershell
-$runId = "20260731T190000Z_a1b2c3d4"
+### Severity policy
 
-python scripts/pipeline.py validate `
-  --run-id $runId
-```
-
-The validator reads only:
-
-```text
-data/raw/<run_id>/
-```
-
-Before validating records, it verifies `raw_manifest.json`, including the run
-ID, expected files, file sizes, and SHA-256 hashes.
-
-## Severity-Based Failure Design
-
-The project does not treat every data issue the same way. It uses severity tiers to decide how the pipeline should respond.
-
-| Severity | Example | Pipeline Behavior |
+| Severity | Example | Pipeline behavior |
 |---|---|---|
-| `hard_fail` | Missing required field, wrong data type, invalid enum, duplicate primary key | Quarantine invalid records, write a validation report, mark batch as failed, and block downstream loading |
-| `quarantine_continue` | Structurally valid child record references a missing parent record | Quarantine invalid child records, write a validation report, and allow only valid records to continue |
-| `warn_continue` | Late-arriving event or unusually old transaction date | Write a warning to the validation report and continue the pipeline |
+| `hard_fail` | Missing required field, invalid type/enum, duplicate primary key | Quarantine invalid records, write reports, fail the batch, and block downstream progression |
+| `quarantine_continue` | Structurally valid child references a missing or invalid parent | Quarantine invalid child records and allow valid records to continue |
+| `warn_continue` | Late-arriving or unusually old transaction event | Record the warning and continue |
 
-This proves the pipeline can distinguish between:
+This keeps operational behavior proportional to the defect instead of treating every anomaly as either fatal or harmless.
 
-- Structurally invalid data
-- Orphaned child records
-- Unusual but acceptable data
-
----
-
-## Validation Reports and Quarantine Handling
+### Reports and quarantine
 
 Validation reports are written to:
 
@@ -393,182 +303,140 @@ Invalid records are written to:
 data/quarantine/<run_id>/invalid_records/
 ```
 
-Validated records are written to:
+Validated output is written to:
 
 ```text
-data/validated/
+data/validated/<run_id>/
 ```
 
-Generated validation artifacts are ignored by Git.
+Each dataset report records items such as:
 
-Each validation report captures:
-
-- Dataset name
-- Contract version
-- Batch status
-- Pipeline action
-- Total record count
-- Valid record count
-- Invalid record count
-- Warning count
-- Failed rule details
-- Severity for each failed rule
+- Dataset and contract version
+- Batch status and pipeline action
+- Total, valid, invalid, and warning counts
+- Failed rule details and severity
 - Quarantine file path, when applicable
 - Validated file path, when applicable
 
-Only validated records are partitioned into the S3-style layout. This prevents quarantined records from continuing downstream.
+The failure policy is also documented in:
+
+```text
+docs/data_contract_failure_policy.md
+```
 
 ---
 
-## Validation Audit Logging
+## Deterministic Generation & Replay
 
-Each validation run writes an audit record to:
-
-```text
-data/validation_reports/<run_id>/validation_audit_log.jsonl
-```
-
-Each audit record includes:
-
-- Validation timestamp in UTC
-- Dataset name
-- Contract version
-- Batch status
-- Pipeline action
-- Total records
-- Valid records
-- Invalid records
-- Warning count
-- Error counts by severity
-- Report file path
-- Quarantine file path
-- Validated file path
-
-This makes validation outcomes auditable before orchestration.
-
----
-
-## Pipeline Audit Logging
-
-The local pipeline runner writes full pipeline audit logs to:
+Synthetic data generation is seeded so the same generation parameters produce a reproducible dataset. Each new raw snapshot is written beneath its owning run ID:
 
 ```text
-data/pipeline_audit_logs/
+data/raw/<run_id>/
 ```
 
-Each pipeline audit record includes:
+The snapshot includes `raw_manifest.json`. The manifest records:
 
+- Manifest version
 - Pipeline run ID
-- Start and end timestamps
-- Runtime duration
-- Pipeline status
-- Failed step, when applicable
-- Failure reason, when applicable
-- Command used
-- Step-level execution results
-- Validation summary
-- S3, Snowflake, and dbt execution mode
+- Deterministic seed
+- Base date
+- Generation timestamp
+- Dataset count
+- Total record count
+- Per-file record count
+- Per-file size
+- Per-file SHA-256 hash
 
-Generated pipeline audit logs are ignored by Git. Sanitized examples can be stored under:
+If a run-scoped raw directory already exists, generation does not silently replace it. The existing manifest and source files are verified against the requested run and seed before the snapshot is accepted for reuse.
 
-```text
-docs/sample_outputs/
+This makes replay explicit:
+
+```powershell
+$runId = "20260731T190000Z_a1b2c3d4"
+
+python scripts/pipeline.py run `
+  --run-id $runId `
+  --skip-generate
 ```
+
+Replay therefore means “process this exact owned snapshot again,” not “regenerate approximately the same type of data.”
 
 ---
 
-## Local Pipeline Orchestration
+## S3 Publication & Idempotency
 
-The project includes a local orchestration script:
-
-```text
-scripts/run_pipeline.py
-```
-
-Run the local pipeline:
-
-```powershell
-python scripts/run_pipeline.py
-```
-
-This executes:
+Validated records are partitioned locally by dataset, year, and month beneath the run-scoped partition directory:
 
 ```text
-Generate synthetic raw JSON data
-→ Validate raw data against versioned contracts
-→ Stop if validation hard-fails
-→ Write validated records
-→ Partition validated data into the S3-style raw zone
+data/s3_partitioned/<run_id>/raw/
+├── customers/year=YYYY/month=MM/
+├── transactions/year=YYYY/month=MM/
+├── fraud_signals/year=YYYY/month=MM/
+├── disputes/year=YYYY/month=MM/
+└── chargeback_outcomes/year=YYYY/month=MM/
 ```
 
-Optional dbt build:
+The partition step also writes a `partition_manifest.json` describing the run and partitioned output.
 
-```powershell
-python scripts/run_pipeline.py --run-dbt
-```
-
-Full safe dry-run workflow:
-
-```powershell
-python scripts/run_pipeline.py --skip-generate --upload-s3 --s3-bucket <your-bucket-name> --reload-snowflake --run-dbt
-```
-
-This runs:
+Remote publication adds the run ID before the dataset path:
 
 ```text
-Validate raw data
-→ Write validated records
-→ Partition validated data
-→ Preview S3 upload using dry-run mode
-→ Preview Snowflake RAW reload using dry-run mode
-→ Run dbt build
-→ Write pipeline audit log
+s3://<bucket>/raw/run_id=<run_id>/...
 ```
 
-The S3 and Snowflake steps are protected by dry-run defaults. The S3 dry run validates local publication preparation only; it does not contact AWS or prove live S3 behavior.
+The S3 publisher validates local partition output before publication and uses metadata to make reruns explicit. The publication design includes:
 
-| Step | Default Behavior | Execute Flag |
-|---|---|---|
-| S3 upload | Dry run | `--execute-s3-upload` |
-| Snowflake RAW reload | Dry run | `--execute-snowflake-reload` |
+- Run-scoped remote prefixes
+- Partition-manifest verification
+- SHA-256 metadata for published files
+- An inventory hash for the expected run contents
+- `_SUCCESS.json` as the completion marker
+- Detection of an already-complete identical run
+- Detection of partial or conflicting remote prefixes
+- Explicit `--allow-overwrite` semantics for intentional replacement
+
+Preview one publication without mutating AWS:
+
+```powershell
+$runId = "20260731T190000Z_a1b2c3d4"
+
+python scripts/pipeline.py upload-s3 `
+  --run-id $runId `
+  --bucket <your-bucket-name>
+```
+
+The command is a local dry run unless `--execute` is supplied. An intentional replacement additionally requires the overwrite option supported by the CLI.
+
+The dry run validates publication preparation; it does **not** contact AWS or by itself prove live S3 integration.
 
 ---
 
-## S3 Ingestion
+## Snowflake Loading & Recovery
 
-The pipeline supports AWS S3-based ingestion.
+The Snowflake database is organized into four schemas:
 
-Completed workflow:
+| Schema | Purpose |
+|---|---|
+| `RAW` | Raw JSON landing records plus source lineage |
+| `STAGING` | Bronze and silver transformation layers |
+| `MARTS` | Gold analytical marts |
+| `MONITORING` | Pipeline observability outputs |
+
+The bootstrap SQL is located at:
 
 ```text
-Local JSON files
-→ Data contract validation
-→ Validated data layer
-→ Partitioned local raw zone
-→ AWS S3 raw zone
-→ Snowflake storage integration
-→ Snowflake external stage
-→ Snowflake RAW tables
-→ dbt bronze/silver/gold models
-→ dbt tests and monitoring
+sql/snowflake_setup.sql
 ```
 
-Expected RAW row counts after loading:
+It defines the core warehouse, database, schemas, JSON file format, and five RAW landing tables.
 
-| Table | Expected Rows |
-|---|---:|
-| RAW_CUSTOMERS | 1,500 |
-| RAW_TRANSACTIONS | 10,000 |
-| RAW_FRAUD_SIGNALS | 10,000 |
-| RAW_DISPUTES | 1,200 |
-| RAW_CHARGEBACK_OUTCOMES | 840 |
+### Run-specific guarded RAW load
 
----
+The supported loader consumes a single published S3 run:
 
-## Snowflake SQL Runner
-
-The guarded Snowflake RAW loader is exposed through the stage-oriented CLI.
-It loads one published S3 batch identified by a pipeline run ID.
+```text
+raw/run_id=<run_id>/...
+```
 
 Dry run:
 
@@ -579,7 +447,7 @@ python scripts/pipeline.py load-snowflake `
   --run-id $runId
 ```
 
-Execute the load:
+Execute only after the target environment is configured:
 
 ```powershell
 python scripts/pipeline.py load-snowflake `
@@ -593,83 +461,127 @@ The default SQL file is:
 sql/load_raw_from_s3.sql
 ```
 
-The loader stages data into temporary tables and validates row counts, source
-file counts, pipeline run IDs, and source lineage before replacing the active
-RAW tables. The removed legacy loader is intentionally not supported.
-
-The same guarded stage can be invoked through the end-to-end command. External
-systems remain dry-run by default:
-
-```powershell
-python scripts/pipeline.py run `
-  --run-id $runId `
-  --skip-generate `
-  --load-snowflake
-```
-
-Add `--execute-snowflake` only when credentials and the target Snowflake
-environment are configured.
-
-## Controlled Snowflake RAW Reload Strategy
-
-The project includes a controlled Snowflake RAW reload script:
+The loader follows a guarded promotion sequence:
 
 ```text
-sql/load_raw_from_s3.sql
+COPY one run into temporary RAW tables
+        ↓
+validate expected row counts
+validate source file counts
+validate pipeline_run_id
+validate source_file / source_row_number lineage
+        ↓
+BEGIN TRANSACTION
+        ↓
+replace active RAW contents from validated temporary tables
+        ↓
+COMMIT
 ```
 
-The reload strategy is designed for controlled development and reproducible testing. It loads new files into temporary RAW tables first, then promotes the data only after the staged load succeeds.
+The guardrail checkpoint occurs **before** the transaction that replaces active RAW contents. If staged data does not match the local partition manifest or required lineage expectations, promotion is blocked.
+
+RAW lineage fields include:
 
 ```text
-COPY S3 files into temporary RAW load tables
--> confirm temporary loads complete successfully
--> begin transaction
--> replace real RAW tables from the temporary tables
--> commit
--> rebuild downstream dbt models
+pipeline_run_id
+source_file
+source_row_number
+loaded_at
 ```
 
-This prevents duplicate RAW rows when the same S3 files are loaded more than once during local development, while reducing the risk of leaving RAW tables empty if an S3 load fails.
+### Controlled full-reload tradeoff
 
-This is different from a fully append-only production ingestion strategy. In production, the pipeline would typically add load metadata, file tracking, batch IDs, streams/tasks, Snowpipe, MERGE logic, or table swap patterns for stronger ingestion controls.
+V1 uses a controlled full-RAW replacement pattern because the project is small, synthetic, batch oriented, and optimized for deterministic replay. The important property is not “full reload”; it is that replacement occurs only after a run-specific staged load passes guardrails.
+
+A materially larger append-oriented production workload would likely require different state-management and incremental-ingestion semantics. Those are production considerations, not requirements to make this V1 portfolio dataset artificially complex.
 
 ---
 
-## Snowpipe Auto-Ingest Configuration Proof of Concept
+## dbt Transformation Layer
 
-The repository includes Snowpipe SQL and configuration artifacts that illustrate an auto-ingest pattern. Live S3 event delivery and Snowpipe auto-ingestion are not independently proven by this repository.
-
-Intended Snowpipe workflow:
+The dbt project contains **13 SQL models**:
 
 ```text
-New JSON file uploaded to S3
-→ S3 object-created event notification
-→ Snowflake Snowpipe notification channel
-→ Snowpipe COPY INTO execution
-→ Test RAW table populated automatically
+5 Bronze
+2 Silver
+5 Gold
+1 Monitoring
 ```
 
-Test objects:
+### Bronze — 5 models
 
-| Object | Purpose |
-|---|---|
-| `RAW_TRANSACTIONS_PIPE_TEST` | Test table used to validate Snowpipe loading |
-| `PIPE_TRANSACTIONS_SNOWPIPE_TEST` | Snowpipe object configured with `AUTO_INGEST = TRUE` |
-| `raw/snowpipe_test/transactions/` | S3 test prefix used for Snowpipe event notifications |
+Bronze models flatten RAW JSON into typed relational columns while preserving source lineage.
 
-This demonstrates the intended event-driven ingestion design alongside the manual S3 batch-load implementation; it does not claim independently verified live auto-ingestion.
+```text
+br_customers
+br_transactions
+br_fraud_signals
+br_disputes
+br_chargeback_outcomes
+```
+
+Each Bronze model carries lineage fields including `pipeline_run_id`, `source_file`, `source_row_number`, and `loaded_at`.
+
+### Silver — 2 models
+
+```text
+silver_transactions_enriched
+silver_dispute_outcomes
+```
+
+`silver_transactions_enriched` joins transactions, customers, and fraud signals at the same pipeline-run grain and adds analytical fraud attributes.
+
+`silver_dispute_outcomes` combines disputes, enriched transaction context, and chargeback outcomes while preserving batch-aware joins and source provenance.
+
+### Gold — 5 models
+
+```text
+gold_fraud_summary_by_network
+gold_dispute_chargeback_summary_by_network
+gold_daily_fraud_kpis
+gold_daily_dispute_kpis
+gold_pipeline_batch_metadata
+```
+
+The first four provide business-facing fraud, dispute, chargeback, and timing metrics while retaining `pipeline_run_id` in their aggregation grain. `gold_pipeline_batch_metadata` summarizes batch-level dataset metadata across all five Bronze datasets.
+
+### Monitoring — 1 model
+
+```text
+monitoring_pipeline_row_counts
+```
+
+The monitoring model provides a lightweight row-count view across core warehouse layers.
+
+### dbt tests and execution claim
+
+The project includes dbt schema tests and custom lineage tests, including assertions for Bronze, Silver, and Gold batch lineage. The repository also includes pytest assertions that inspect the dbt model SQL for expected lineage behavior.
+
+A **current successful live `dbt build` is not claimed in this README** because execution depends on a configured Snowflake target and no current build artifact is being used as evidence for this PR.
+
+A safe profile template is provided at:
+
+```text
+dbt/fraud_dispute_dbt/profiles.yml.example
+```
+
+The real dbt profile belongs outside the repository, normally at:
+
+```text
+~/.dbt/profiles.yml
+```
 
 ---
 
-## Airflow Orchestration DAG
+## Airflow Orchestration
 
-The repository includes a local Airflow baseline DAG:
+The local Airflow DAG is defined at:
 
 ```text
 airflow/dags/fraud_dispute_pipeline_dag.py
 ```
 
-Current task flow:
+Its current task graph is exactly:
 
 ```text
 create_pipeline_run_id
@@ -678,89 +590,180 @@ create_pipeline_run_id
 → partition_validated_data
 ```
 
-Airflow creates one run ID and passes it to generation, validation, and
-partitioning. Dataset files remain in the shared Docker volume rather than
-XCom; XCom carries only the run ID.
+Airflow creates one run ID and passes that identifier through the local stages. Dataset files remain in the shared Docker volume rather than being pushed through XCom; XCom carries only the run ID.
 
-The current DAG intentionally ends after local partitioning. S3 publication,
-Snowflake loading, and dbt are implemented in the stage-oriented CLI but are
-not currently automated by this DAG. This keeps the local Airflow
-demonstration focused and avoids presenting planned tasks as implemented.
+**S3 publication, Snowflake loading, and dbt execution are not currently Airflow tasks.** Those capabilities are exposed by the stage-oriented CLI and are intentionally outside the current DAG.
 
-The Compose environment uses retries, execution timeouts, one active DAG run,
-PostgreSQL metadata, a scheduler, an API server, and a DAG processor. It is a
-local portfolio environment, not a production deployment.
+The local Compose environment includes PostgreSQL metadata storage, a scheduler, API server, DAG processor, retries, task execution timeouts, and a one-active-run DAG constraint. It is a local orchestration demonstration, not a production Airflow deployment.
 
-Syntax check:
+Airflow-specific setup and security limitations are documented in:
 
-```powershell
-python -m py_compile `
-  airflow/dags/fraud_dispute_pipeline_dag.py
+```text
+airflow/README.md
 ```
 
-Full local setup and security limitations are documented in
-`airflow/README.md`.
+---
 
-## GitHub Actions CI
+## CI/CD and Docker
 
-The project includes a GitHub Actions workflow:
+GitHub Actions is configured in:
 
 ```text
 .github/workflows/ci.yml
 ```
 
-The CI pipeline performs safe checks only. It does not connect to AWS or Snowflake.
+The workflow has two jobs.
 
-CI checks include:
+### Python checks
+
+The Python job is configured to:
 
 ```text
-Checkout repository
-→ Set up Python
-→ Install dependencies
-→ Compile Python files
-→ Validate Airflow DAG syntax
-→ Run pytest reliability tests
-→ Generate synthetic data
-→ Validate data contracts
-→ Partition validated data into the S3-style layout
+checkout
+→ set up the repository Python version
+→ install requirements-dev.lock.txt with --require-hashes
+→ compile Python files
+→ compile the Airflow DAG
+→ run the full pytest suite
+→ create a run ID
+→ generate synthetic data
+→ validate data contracts
+→ partition validated data
 ```
 
-The workflow intentionally avoids execution steps that could change external systems:
+CI deliberately stops before external mutations:
 
 ```text
 No real S3 upload
-No Snowflake table truncation
 No Snowflake reload execution
-No cloud credential dependency
+No cloud credentials required
 ```
+
+### Docker checks
+
+The Docker job is configured to:
+
+```text
+build the test target
+→ run containerized tests
+→ build the runtime target
+→ verify the runtime CLI
+→ verify the runtime runs as non-root UID 10001
+```
+
+The root `Dockerfile` is multi-stage and uses the hash-locked dependency files. The runtime image is separated from the test image so test-only dependencies do not define the production-style runtime surface.
+
+This README describes what CI is configured to verify; the live GitHub Actions badge above is the appropriate source for current workflow status.
 
 ---
 
-## Monitoring
+## Reliability & Observability
 
-The monitoring model tracks row counts across RAW, STAGING, and MARTS layers.
+Reliability signals are produced at multiple stages rather than only at the dashboard layer.
 
-Model:
+### Validation audit log
+
+Each validation run writes:
+
+```text
+data/validation_reports/<run_id>/validation_audit_log.jsonl
+```
+
+Records include:
+
+- Validation timestamp
+- Dataset and contract version
+- Batch status and pipeline action
+- Total, valid, invalid, and warning counts
+- Error counts by severity
+- Report, quarantine, and validated-output paths
+
+### Pipeline audit log
+
+The local end-to-end runner writes run-level audit artifacts under:
+
+```text
+data/pipeline_audit_logs/
+```
+
+A pipeline audit record includes:
+
+- Pipeline run ID
+- Start and end timestamps
+- Runtime duration
+- Final pipeline status
+- Failed step and failure reason, when applicable
+- Command and step-level execution records
+- Validation summary
+- S3, Snowflake, and dbt execution mode when those stages are requested
+
+A sanitized example is stored under:
+
+```text
+docs/sample_outputs/
+```
+
+### Warehouse lineage and monitoring
+
+Lineage is preserved from RAW into dbt rather than being discarded after ingestion. The core lineage fields are:
+
+```text
+pipeline_run_id
+source_file
+source_row_number
+loaded_at
+```
+
+The Gold layer also includes:
+
+```text
+gold_pipeline_batch_metadata
+```
+
+and the monitoring layer includes:
 
 ```text
 monitoring_pipeline_row_counts
 ```
 
-This table provides a lightweight observability check to confirm that key pipeline tables are populated after each dbt build.
+Together, these provide batch identity, source provenance, and lightweight row-count visibility for downstream inspection.
 
 ---
 
-## Streamlit Dashboard
+## Snowpipe POC
 
-The project includes a Streamlit dashboard for exploring the gold marts and monitoring outputs.
+The repository includes Snowpipe SQL/configuration artifacts that illustrate an event-driven auto-ingest design. It is intentionally classified as a **configuration proof of concept**.
 
-Dashboard location:
+Intended pattern:
+
+```text
+S3 object-created event
+→ Snowflake notification channel
+→ Snowpipe COPY INTO
+→ test RAW table
+```
+
+Relevant test objects include:
+
+| Object | Purpose |
+|---|---|
+| `RAW_TRANSACTIONS_PIPE_TEST` | Test landing table |
+| `PIPE_TRANSACTIONS_SNOWPIPE_TEST` | Pipe configured with `AUTO_INGEST = TRUE` |
+| `raw/snowpipe_test/transactions/` | Dedicated test prefix |
+
+The repository demonstrates the configuration pattern. **It does not claim independently verified live S3 event delivery or production Snowpipe auto-ingestion.**
+
+---
+
+## Streamlit Analytics
+
+The dashboard is located at:
 
 ```text
 dashboards/streamlit_app.py
 ```
 
-The dashboard is designed to show:
+It is designed to expose analytical outputs from the Gold and monitoring layers, including:
 
 - Fraud KPIs by card network
 - Daily fraud trends
@@ -768,15 +771,9 @@ The dashboard is designed to show:
 - Chargeback win/loss outcomes
 - Pipeline row-count monitoring
 
-The dashboard reads Snowflake connection settings from environment variables, including:
+Snowflake configuration is environment driven, including `SNOWFLAKE_DATABASE`, so the dashboard code does not need SQL edits to point at a different configured database.
 
-```text
-SNOWFLAKE_DATABASE
-```
-
-This allows the same dashboard code to run against development or staging databases without changing SQL code.
-
-Run command:
+Run locally after Snowflake is configured:
 
 ```powershell
 streamlit run dashboards\streamlit_app.py
@@ -784,210 +781,121 @@ streamlit run dashboards\streamlit_app.py
 
 ---
 
-## SQL Scripts
+## Implemented vs POC
 
-The `sql/` folder includes reusable Snowflake scripts.
+The project intentionally distinguishes repository implementation from live external execution and production operation.
+
+| Capability | V1 status |
+|---|---|
+| Deterministic synthetic generation | **Implemented + tested** |
+| Immutable raw snapshots and raw-manifest verification | **Implemented + tested** |
+| Five versioned data contracts | **Implemented + tested** |
+| Semantic validation, duplicate detection, referential/composite integrity | **Implemented + tested** |
+| Severity-aware quarantine and failure handling | **Implemented + tested** |
+| Run-scoped validated output and partitioning | **Implemented + tested** |
+| Idempotent S3 publisher and completion-marker behavior | **Implemented + tested behavior; live mutation is opt-in** |
+| Guarded Snowflake loader | **Implemented + guardrail-tested; live execution requires a configured target** |
+| 13 dbt model definitions and dbt tests | **Implemented** |
+| Current successful live dbt build | **Not claimed** |
+| Four-task Airflow local DAG | **Implemented for run ID → generate → validate → partition** |
+| Airflow orchestration of S3 → Snowflake → dbt | **Not implemented** |
+| GitHub Actions and Docker verification configuration | **Implemented** |
+| Snowpipe auto-ingest | **Configuration POC; live auto-ingestion not claimed** |
+| Production Airflow/cloud deployment | **Not claimed** |
+| Grounded AI investigation layer | **Not implemented; next phase** |
+
+This distinction is deliberate: having code for an integration, testing its behavior, executing against a configured external environment, and operating that integration in production are different claims.
+
+---
+
+## Repository Structure
+
+```text
+.
+├── .github/
+│   └── workflows/ci.yml
+├── airflow/
+│   ├── dags/fraud_dispute_pipeline_dag.py
+│   ├── docker-compose.yml
+│   └── README.md
+├── contracts/
+│   └── v1/
+├── dashboards/
+│   └── streamlit_app.py
+├── dbt/
+│   └── fraud_dispute_dbt/
+│       ├── models/
+│       │   ├── bronze/
+│       │   ├── silver/
+│       │   ├── gold/
+│       │   └── monitoring/
+│       └── tests/
+├── docs/
+│   ├── data_contract_failure_policy.md
+│   └── sample_outputs/
+├── scripts/
+│   ├── generate_data.py
+│   ├── pipeline.py
+│   ├── run_pipeline.py
+│   ├── run_snowflake_sql.py
+│   ├── upload_partitioned_to_s3.py
+│   ├── validate_data_contracts.py
+│   └── partition_data_for_s3.py
+├── sql/
+│   ├── snowflake_setup.sql
+│   ├── setup_s3_stage_template.sql
+│   ├── load_raw_from_s3.sql
+│   ├── validate_raw_counts.sql
+│   ├── setup_snowflake_role_template.sql
+│   └── setup_snowpipe_template.sql
+├── tests/
+├── Dockerfile
+├── requirements.lock.txt
+└── requirements-dev.lock.txt
+```
+
+Key reusable Snowflake scripts:
 
 | Script | Purpose |
 |---|---|
-| `snowflake_setup.sql` | Creates the warehouse, database, schemas, JSON file format, and RAW landing tables |
-| `setup_s3_stage_template.sql` | Safe template for creating a Snowflake storage integration and S3 external stage |
-| `load_raw_from_s3.sql` | Reloads RAW tables from the S3 raw zone |
-| `validate_raw_counts.sql` | Validates RAW table row counts after loading |
-| `setup_snowpipe_template.sql` | Safe template for testing Snowpipe auto-ingest |
+| `sql/snowflake_setup.sql` | Creates core Snowflake objects and RAW landing tables |
+| `sql/setup_s3_stage_template.sql` | Template for storage integration and S3 external stage setup |
+| `sql/load_raw_from_s3.sql` | Run-scoped guarded RAW loading and promotion |
+| `sql/validate_raw_counts.sql` | RAW row-count validation queries |
+| `sql/setup_snowflake_role_template.sql` | Role/grant setup template |
+| `sql/setup_snowpipe_template.sql` | Snowpipe configuration POC |
 
 ---
 
-## How to Run
+## Production Considerations
 
-### 1. Install dependencies
+V1 is intentionally sized as a portfolio platform, so “production hardening” is treated as a set of architectural questions rather than a shopping list of additional tools.
 
-```powershell
-python -m pip install -r requirements.txt
-```
+At materially larger scale or under production operational requirements, the design would need decisions around:
 
-### 2. Configure environment variables
+- **Infrastructure lifecycle:** repeatable provisioning, environment isolation, ownership, and change control for cloud and warehouse resources
+- **Secrets and identity:** managed credentials, least-privilege roles, key rotation, and workload identity
+- **Ingestion state:** append/incremental semantics, file-level load state, late-arriving data, replay boundaries, and deduplication across batches
+- **Warehouse promotion:** stronger deployment and rollback patterns for concurrent or continuously arriving workloads
+- **Transformation strategy:** incremental model behavior where full rebuilds are no longer appropriate
+- **Observability:** freshness, volume, quality, and run-failure alerting with operational ownership and escalation paths
+- **Orchestration:** managed deployment, durable scheduling, backfills, notifications, concurrency controls, and service-level expectations
+- **Access control:** environment-specific Snowflake roles and separation of operational duties
 
-Create a local `.env` file from the example file.
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Update `.env` with your local Snowflake and AWS settings.
-
-Do not commit `.env`.
-
-### 3. Configure dbt profile
-
-Copy the example dbt profile:
-
-```powershell
-Copy-Item dbt\fraud_dispute_dbt\profiles.yml.example $HOME\.dbt\profiles.yml
-```
-
-Update the copied file with your local Snowflake values.
-
-Do not commit your real `profiles.yml`.
-
-### 4. Create a run ID for stage-by-stage execution
-
-```powershell
-$timestamp = [DateTime]::UtcNow.ToString(
-  "yyyyMMddTHHmmssZ"
-)
-
-$suffix = [guid]::NewGuid().
-  ToString("N").
-  Substring(0, 8)
-
-$runId = "${timestamp}_${suffix}"
-
-Write-Host "Pipeline Run ID: $runId"
-```
-
-### 5. Generate one immutable raw snapshot
-
-```powershell
-python scripts/generate_data.py `
-  --run-id $runId
-```
-
-Generated files are written to `data/raw/<run_id>/` with a
-`raw_manifest.json` containing row counts, file sizes, the deterministic seed,
-and SHA-256 hashes.
-
-### 6. Validate data contracts
-
-```powershell
-python scripts/pipeline.py validate `
-  --run-id $runId
-```
-
-### 7. Partition validated files for S3
-
-```powershell
-python scripts/pipeline.py partition `
-  --run-id $runId
-```
-
-### 8. Preview S3 publication
-
-```powershell
-python scripts/pipeline.py upload-s3 `
-  --run-id $runId `
-  --bucket <your-bucket-name>
-```
-
-The upload command is a dry run unless `--execute` is provided.
-
-### 9. Run the full safe local pipeline
-
-To create a new run automatically:
-
-```powershell
-python scripts/pipeline.py run
-```
-
-To replay the exact raw snapshot created above:
-
-```powershell
-python scripts/pipeline.py run `
-  --run-id $runId `
-  --skip-generate
-```
-
-External S3 and Snowflake stages remain dry-run unless their explicit execute
-flags are provided.
-
-### 10. Run the automated test suite
-
-```powershell
-python -m pytest tests -q
-```
-
-### 11. Generate dbt docs
-
-```powershell
-python -c "from dbt.cli.main import cli; cli()" docs generate
-python -c "from dbt.cli.main import cli; cli()" docs serve
-```
+The current controlled full-reload design does not need to be replaced merely to add complexity. It is appropriate to the V1 workload because it is guarded, run scoped, replayable, and explicit about its tradeoffs.
 
 ---
 
-## Current Status
+## Next Phase: Grounded AI Investigation
 
-Completed:
+The next project phase is a grounded fraud/dispute investigation layer built **on top of** the completed data-platform foundation. The goal is to answer investigation questions using structured platform data and curated supporting documents while preserving source attribution and evaluation boundaries.
 
-- Synthetic fintech data generation
-- Reproducible seeded data generation
-- Local JSON raw file generation
-- Versioned JSON Schema data contracts
-- Severity-based validation failure handling
-- Validation reports and quarantine handling
-- Validated data output layer
-- Validation audit logging
-- S3-style partitioning from validated records
-- AWS S3 raw zone dry-run upload validation
-- Snowflake storage integration and external stage templates
-- Snowflake bootstrap script for schemas, RAW tables, and JSON file format
-- Snowflake RAW JSON loading from S3
-- Controlled Snowflake RAW reload script
-- Reusable Snowflake SQL runner
-- Snowpipe auto-ingest configuration proof of concept
-- dbt bronze models
-- dbt silver enrichment models
-- dbt gold KPI marts
-- dbt data quality tests
-- pytest pipeline reliability tests
-- Pipeline row-count monitoring
-- Pipeline run audit logging
-- Airflow DAG orchestration
-- GitHub Actions CI
-- Streamlit dashboard
-- Environment-driven dashboard database configuration
-- Safe dbt `profiles.yml.example`
-- Full dbt build passing successfully
+That AI layer is **not part of Data Platform V1 and is not implemented or claimed here**.
 
 ---
 
-## Planned Improvements
+## Disclaimer
 
-Next phases:
+This repository is a portfolio project using fully synthetic fraud, dispute, chargeback, customer, and transaction data.
 
-- Add visual architecture screenshots to README
-- Add screenshots for:
-  - Streamlit dashboard
-  - dbt build result
-  - GitHub Actions passing
-  - Pipeline audit log
-  - Snowflake schemas and marts
-- Add Terraform templates for AWS and Snowflake infrastructure
-- Expand Snowpipe from a test prefix to full dataset ingestion
-- Add file-level load tracking and batch IDs
-- Add alerting for data freshness, volume anomalies, and failed pipeline runs
-- Add more advanced monitoring and drift checks
-- Record a short project walkthrough video
-
----
-
-## Production Hardening Roadmap
-
-To harden this further for production deployment, future improvements would include:
-
-- Terraform-managed AWS and Snowflake infrastructure
-- Secrets Manager or environment-based secret management
-- Incremental dbt models instead of full rebuilds
-- File-level load tracking and batch IDs
-- Expanded Snowpipe ingestion across all datasets
-- Data freshness and volume anomaly checks
-- Alerting through Slack, email, or Datadog
-- Airflow retries, SLAs, and failure notifications
-- Role-based Snowflake permissions
-- CI checks with unit tests, fixture-based validation tests, and dbt validation
-
----
-
-## Resume Summary
-
-Built an end-to-end fintech fraud and dispute analytics pipeline using Python, AWS S3, Snowflake, dbt, Airflow, GitHub Actions, pytest, and Streamlit. The project generates **23,540 synthetic records**, validates raw data through versioned JSON Schema contracts, writes clean records to a validated data layer, partitions validated data into an S3-style raw zone, transforms Snowflake data through dbt bronze/silver/gold models, and enforces production-style failure handling through hard-fail blocking, quarantine continuation, warning tiers, validation reports, pytest reliability tests, and pipeline audit logging.
+It does not contain proprietary company data, real customer data, production credentials, secrets, or a claim of production operation. External-system execution requires explicit configuration and is dry-run by default where supported by the pipeline CLI.
