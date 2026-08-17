@@ -35,42 +35,34 @@ The platform is intentionally batch-oriented at V1 scale. The engineering focus 
 
 ```mermaid
 flowchart TD
-    GEN["Deterministic Synthetic Generation"]
-    RAW["Immutable Raw Snapshot<br/>data/raw/&lt;run_id&gt;/<br/>manifest + SHA-256"]
-    DQ["Data Contracts + Quality Gate<br/>schema · semantic · duplicate · referential"]
-    VALID["Validated Records<br/>data/validated/&lt;run_id&gt;/"]
-    QUAR["Quarantine + Validation Reports"]
-    PART["Run-Scoped Partitioning<br/>data/s3_partitioned/&lt;run_id&gt;/"]
-    S3["Idempotent S3 Publication<br/>raw/run_id=&lt;run_id&gt;/..."]
-    TMP["Temporary Snowflake RAW Load"]
-    GUARD["Load Guardrails<br/>rows · files · run ID · lineage"]
-    RAWDB["Transactional RAW Promotion"]
-    DBT["dbt<br/>Bronze → Silver → Gold"]
-    OUT["Analytics + Monitoring<br/>Streamlit"]
+    GEN["Synthetic Data Generation"]
+    RAW["Immutable Raw Snapshot<br/>run ID + manifest + SHA-256"]
+    DQ["Data Quality Gate"]
+    VALID["Validated Data"]
+    QUAR["Quarantine + Reports"]
+    PART["Run-Scoped Partitioning"]
+    S3["Idempotent S3 Publication"]
+    SNOW["Guarded Snowflake Load"]
+    DBT["dbt<br/>Bronze - Silver - Gold"]
+    OUT["Analytics + Monitoring"]
 
     GEN --> RAW
     RAW --> DQ
     DQ -->|valid| VALID
-    DQ -->|invalid / warnings| QUAR
+    DQ -->|invalid| QUAR
     VALID --> PART
     PART --> S3
-    S3 --> TMP
-    TMP --> GUARD
-    GUARD --> RAWDB
-    RAWDB --> DBT
+    S3 --> SNOW
+    SNOW --> DBT
     DBT --> OUT
-
-    CLI["Stage-Oriented CLI<br/>safe external dry-run defaults"] -. controls .-> GEN
-    CLI -. controls .-> S3
-    CLI -. controls .-> TMP
-    CLI -. controls .-> DBT
-
-    AF["Airflow scope<br/>create_pipeline_run_id<br/>→ generate_synthetic_data<br/>→ validate_data_contracts<br/>→ partition_validated_data"] -. orchestrates local stages .-> PART
-
-    CI["GitHub Actions + Docker<br/>tests + safe local verification"] -. verifies .-> DQ
 ```
 
-The stage-oriented CLI represents the full V1 execution path and keeps external mutations opt-in. The current Airflow DAG is deliberately narrower: it creates one run ID, generates the raw snapshot, validates it, and partitions validated records. **Airflow does not currently orchestrate S3 publication, Snowflake loading, or dbt.**
+**Execution & Controls**
+
+- Airflow orchestrates the local `run ID -> generate -> validate -> partition` workflow.
+- The stage-oriented CLI exposes S3 publication, Snowflake loading, and dbt execution.
+- External mutations are dry-run by default and require explicit execution.
+- GitHub Actions and Docker provide reproducible verification.
 
 ---
 
