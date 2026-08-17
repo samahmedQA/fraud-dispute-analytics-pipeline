@@ -33,33 +33,15 @@ The platform is intentionally batch-oriented at V1 scale. The engineering focus 
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    GEN["Synthetic Data Generation"]
-    RAW["Immutable Raw Snapshot<br/>run ID + manifest + SHA-256"]
-    DQ["Data Quality Gate"]
-    VALID["Validated Data"]
-    QUAR["Quarantine + Reports"]
-    PART["Run-Scoped Partitioning"]
-    S3["Idempotent S3 Publication"]
-    TMP["Temporary Snowflake RAW Load"]
-    GUARD["Load Guardrails"]
-    RAWDB["Transactional RAW Promotion"]
-    DBT["dbt<br/>Bronze → Silver → Gold"]
-    OUT["Analytics + Monitoring<br/>Streamlit"]
+<p align="center">
+  <img
+    src="docs/images/data-platform-architecture.png"
+    alt="Fraud & Dispute Analytics Data Platform architecture"
+    width="100%"
+  />
+</p>
 
-    GEN --> RAW
-    RAW --> DQ
-    DQ -->|valid| VALID
-    DQ -->|invalid| QUAR
-    VALID --> PART
-    PART --> S3
-    S3 --> TMP
-    TMP --> GUARD
-    GUARD --> RAWDB
-    RAWDB --> DBT
-    DBT --> OUT
-```
+This visual summarizes the end-to-end V1 platform at a glance. For the exact active data path, see the simplified technical flow diagram in the Technical Deep Dive section below.
 
 ## Key Engineering Decisions
 
@@ -186,6 +168,40 @@ For stage-by-stage commands and external-system configuration, continue into the
 ---
 
 # Technical Deep Dive
+
+## Technical Pipeline Flow
+
+```mermaid
+flowchart TD
+    GEN["Synthetic Data Generation"]
+    RAW["Immutable Raw Snapshot<br/>run ID + manifest + SHA-256"]
+    DQ["Data Quality Gate"]
+    VALID["Validated Data"]
+    QUAR["Quarantine + Reports"]
+    PART["Run-Scoped Partitioning"]
+    S3["Idempotent S3 Publication"]
+    TMP["Temporary Snowflake RAW Load"]
+    GUARD["Load Guardrails"]
+    RAWDB["Transactional RAW Promotion"]
+    DBT["dbt<br/>Bronze → Silver → Gold"]
+    OUT["Analytics + Monitoring<br/>Streamlit"]
+
+    GEN --> RAW
+    RAW --> DQ
+    DQ -->|valid| VALID
+    DQ -->|invalid| QUAR
+    VALID --> PART
+    PART --> S3
+    S3 --> TMP
+    TMP --> GUARD
+    GUARD --> RAWDB
+    RAWDB --> DBT
+    DBT --> OUT
+```
+
+The solid arrows represent the active V1 data path. Invalid records are routed to run-scoped quarantine and validation reports.
+
+The current Airflow DAG ends after `partition_validated_data`; S3 publication, Snowflake loading, and dbt are not current Airflow tasks.
 
 ## Run-Scoped Data Lifecycle
 
