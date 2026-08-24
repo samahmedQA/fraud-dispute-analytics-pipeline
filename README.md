@@ -4,9 +4,11 @@
 
 Production-style batch data platform for fraud, disputes, and chargebacks, designed around **reproducibility, data quality, lineage, idempotent publication, guarded warehouse loading, and recoverability** rather than simply connecting services together.
 
-The platform generates and processes **23,540 synthetic fintech records** across **5 source datasets** governed by **5 versioned contracts**, preserves immutable run-scoped inputs, validates data before external side effects, and carries pipeline lineage into Snowflake and downstream dbt models.
+The platform generates and processes **23,540 synthetic fintech records** across **5 source datasets** governed by **versioned V1/V2 JSON Schema contracts**, preserves immutable run-scoped inputs, validates data before external side effects, and carries pipeline lineage into Snowflake and downstream dbt models.
 
 **Data Platform V1 release tag:** `v1.0.0-data-platform`
+
+**V2 status:** Source change tracking is implemented with deterministic `updated_at` semantics and versioned V1/V2 contracts. Stateful incremental selection, watermarks, Snowflake `MERGE`, and incremental warehouse loading are not implemented yet.
 
 > This is a portfolio project built entirely with synthetic data. It contains no company data, customer data, credentials, or secrets.
 
@@ -14,12 +16,12 @@ The platform generates and processes **23,540 synthetic fintech records** across
 
 ## At a Glance
 
-| Metric | Data Platform V1 |
+| Metric | Current repository |
 |---|---:|
 | Synthetic records | **23,540** |
 | Source datasets | **5** |
-| Versioned JSON Schema contracts | **5** |
-| pytest cases | **80** |
+| JSON Schema contract files | **10 (5 V1 + 5 V2)** |
+| pytest cases | **99** |
 | dbt models | **13** |
 | Gold models | **5** |
 | Snowflake schemas | **4** |
@@ -161,7 +163,7 @@ python scripts/pipeline.py run `
 python -m pytest tests -q
 ```
 
-The repository contains **80 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, referential integrity, S3 idempotency, Snowflake load guardrails, dbt lineage assertions, supported loader behavior, and documentation alignment.
+The repository contains **99 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, source change tracking, V1/V2 contract compatibility, referential integrity, S3 idempotency, Snowflake load guardrails, dbt lineage assertions, supported loader behavior, and documentation alignment.
 
 For stage-by-stage commands and external-system configuration, continue into the technical deep dive below.
 
@@ -257,9 +259,10 @@ Versioned JSON Schema contracts live under:
 
 ```text
 contracts/v1/
+contracts/v2/
 ```
 
-There are five V1 contracts:
+V1 contracts are preserved unchanged for historical replay compatibility. V2 contains the same five dataset contracts with required `updated_at` source change tracking.
 
 ```text
 customers.schema.json
@@ -281,6 +284,8 @@ Validation covers more than JSON shape. The pipeline enforces:
 - Severity-based hard-fail, quarantine, and warning policies
 
 Before dataset validation begins, the validator verifies the raw snapshot manifest for the requested run. That prevents validation from unknowingly reading a missing, modified, or mismatched raw batch.
+
+New V2 manifests declare `contract_version=v2`. Historical manifests without `contract_version` intentionally resolve to V1 for backward-compatible replay. In V2, `updated_at` represents the source record's last-change timestamp, is initialized deterministically from the existing lifecycle timestamp, and cannot be earlier than that lifecycle timestamp. It is independent of `pipeline_run_id` and warehouse load time.
 
 ### Severity policy
 
@@ -340,6 +345,7 @@ data/raw/<run_id>/
 The snapshot includes `raw_manifest.json`. The manifest records:
 
 - Manifest version
+- Contract version
 - Pipeline run ID
 - Deterministic seed
 - Base date
@@ -792,7 +798,7 @@ The project intentionally distinguishes repository implementation from live exte
 |---|---|
 | Deterministic synthetic generation | **Implemented + tested** |
 | Immutable raw snapshots and raw-manifest verification | **Implemented + tested** |
-| Five versioned data contracts | **Implemented + tested** |
+| Versioned V1/V2 data contracts | **Implemented + tested** |
 | Semantic validation, duplicate detection, referential/composite integrity | **Implemented + tested** |
 | Severity-aware quarantine and failure handling | **Implemented + tested** |
 | Run-scoped validated output and partitioning | **Implemented + tested** |
