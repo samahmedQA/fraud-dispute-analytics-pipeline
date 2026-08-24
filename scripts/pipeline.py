@@ -122,6 +122,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Existing pipeline run ID.",
     )
 
+    incremental_select_parser = subparsers.add_parser(
+        "incremental-select",
+        help="Select new or changed V2 records for one pipeline run.",
+    )
+    incremental_select_parser.add_argument(
+        "--run-id",
+        required=True,
+        type=validate_run_id,
+        help="Existing validated V2 pipeline run ID.",
+    )
+
+    incremental_commit_parser = subparsers.add_parser(
+        "incremental-commit",
+        help="Commit the candidate incremental checkpoint for a successful run.",
+    )
+    incremental_commit_parser.add_argument(
+        "--run-id",
+        required=True,
+        type=validate_run_id,
+        help="Pipeline run ID whose candidate checkpoint should be committed.",
+    )
+
     upload_parser = subparsers.add_parser(
         "upload-s3",
         help="Upload and verify one partitioned run in S3.",
@@ -290,6 +312,30 @@ def build_command(
             [
                 sys.executable,
                 "scripts/partition_data_for_s3.py",
+                "--run-id",
+                args.run_id,
+            ],
+            PROJECT_ROOT,
+        )
+
+    if args.command == "incremental-select":
+        return (
+            [
+                sys.executable,
+                "scripts/incremental_selection.py",
+                "select",
+                "--run-id",
+                args.run_id,
+            ],
+            PROJECT_ROOT,
+        )
+
+    if args.command == "incremental-commit":
+        return (
+            [
+                sys.executable,
+                "scripts/incremental_selection.py",
+                "commit",
                 "--run-id",
                 args.run_id,
             ],

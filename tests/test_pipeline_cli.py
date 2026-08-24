@@ -24,6 +24,8 @@ def test_parser_exposes_stage_oriented_commands():
         "run",
         "validate",
         "partition",
+        "incremental-select",
+        "incremental-commit",
         "upload-s3",
         "load-snowflake",
         "dbt",
@@ -133,6 +135,46 @@ def test_partition_builds_one_stage_command():
     assert command == [
         sys.executable,
         "scripts/partition_data_for_s3.py",
+        "--run-id",
+        RUN_ID,
+    ]
+    assert cwd == PROJECT_ROOT
+
+
+def test_incremental_select_builds_one_stage_command():
+    args = parse_cli_args(
+        [
+            "incremental-select",
+            "--run-id",
+            RUN_ID,
+        ]
+    )
+    command, cwd = build_command(args)
+
+    assert command == [
+        sys.executable,
+        "scripts/incremental_selection.py",
+        "select",
+        "--run-id",
+        RUN_ID,
+    ]
+    assert cwd == PROJECT_ROOT
+
+
+def test_incremental_commit_builds_one_stage_command():
+    args = parse_cli_args(
+        [
+            "incremental-commit",
+            "--run-id",
+            RUN_ID,
+        ]
+    )
+    command, cwd = build_command(args)
+
+    assert command == [
+        sys.executable,
+        "scripts/incremental_selection.py",
+        "commit",
         "--run-id",
         RUN_ID,
     ]
