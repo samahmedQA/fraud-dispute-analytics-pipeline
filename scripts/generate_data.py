@@ -21,7 +21,8 @@ DEFAULT_RAW_DATA_ROOT = PROJECT_ROOT / "data" / "raw"
 
 DEFAULT_SEED = 42
 BASE_DATE = datetime(2026, 7, 21)
-GENERATOR_VERSION = "1.0.0"
+GENERATOR_VERSION = "2.0.0"
+CONTRACT_VERSION = "v2"
 
 NUM_TRANSACTIONS = 10_000
 NUM_CUSTOMERS = 1_500
@@ -264,19 +265,25 @@ def generate_datasets(
     customers: list[dict[str, Any]] = []
 
     for index in range(1, NUM_CUSTOMERS + 1):
+        customer_age = random.randint(18, 75)
+        account_status = random.choice(
+            ["Active", "Suspended", "Closed"]
+        )
+        state = fake.state_abbr()
+        created_at = random_date(
+            fake,
+            1000,
+        ).strftime("%Y-%m-%d")
+
         customers.append(
             {
                 "customer_id": f"CUST_{index:06d}",
                 "account_id": f"ACCT_{index:06d}",
-                "customer_age": random.randint(18, 75),
-                "account_status": random.choice(
-                    ["Active", "Suspended", "Closed"]
-                ),
-                "state": fake.state_abbr(),
-                "created_at": random_date(
-                    fake,
-                    1000,
-                ).strftime("%Y-%m-%d"),
+                "customer_age": customer_age,
+                "account_status": account_status,
+                "state": state,
+                "created_at": created_at,
+                "updated_at": f"{created_at} 00:00:00",
             }
         )
 
@@ -304,6 +311,9 @@ def generate_datasets(
                     transaction_timestamp.strftime(
                         "%Y-%m-%d %H:%M:%S"
                     )
+                ),
+                "updated_at": transaction_timestamp.strftime(
+                    "%Y-%m-%d %H:%M:%S"
                 ),
                 "transaction_status": random.choice(
                     TRANSACTION_STATUSES
@@ -363,6 +373,9 @@ def generate_datasets(
                 "score_timestamp": row[
                     "transaction_timestamp"
                 ],
+                "updated_at": row[
+                    "transaction_timestamp"
+                ],
             }
         )
 
@@ -398,6 +411,9 @@ def generate_datasets(
                 ),
                 "opened_date": opened_date.strftime(
                     "%Y-%m-%d"
+                ),
+                "updated_at": (
+                    f"{opened_date.strftime('%Y-%m-%d')} 00:00:00"
                 ),
                 "card_network": row["card_network"],
             }
@@ -439,6 +455,9 @@ def generate_datasets(
                 "final_amount": final_amount,
                 "resolved_date": resolved_date.strftime(
                     "%Y-%m-%d"
+                ),
+                "updated_at": (
+                    f"{resolved_date.strftime('%Y-%m-%d')} 00:00:00"
                 ),
                 "representment_required": random.choice(
                     [True, False]
@@ -494,6 +513,7 @@ def write_snapshot(
 
     raw_manifest: dict[str, Any] = {
         "manifest_version": "1.0",
+        "contract_version": CONTRACT_VERSION,
         "run_id": run_id,
         "generator_version": GENERATOR_VERSION,
         "seed": seed,

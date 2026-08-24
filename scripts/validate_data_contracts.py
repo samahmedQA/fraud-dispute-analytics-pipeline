@@ -18,11 +18,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 RAW_DATA_ROOT = PROJECT_ROOT / "data" / "raw"
 VALIDATED_DATA_ROOT = PROJECT_ROOT / "data" / "validated"
-CONTRACTS_DIR = PROJECT_ROOT / "contracts" / "v1"
+CONTRACTS_ROOT = PROJECT_ROOT / "contracts"
 QUARANTINE_ROOT = PROJECT_ROOT / "data" / "quarantine"
 REPORTS_ROOT = PROJECT_ROOT / "data" / "validation_reports"
 
-CONTRACT_VERSION = "v1"
+DEFAULT_CONTRACT_VERSION = "v1"
+SUPPORTED_CONTRACT_VERSIONS = {"v1", "v2"}
 
 RUN_ID_PATTERN = re.compile(
     r"^\d{8}T\d{6}Z_[0-9a-f]{8}$"
@@ -93,19 +94,13 @@ REFERENCE_RULES = {
 DATASETS = {
     "customers": {
         "raw_file_name": "customers.json",
-        "schema_file": (
-            CONTRACTS_DIR
-            / "customers.schema.json"
-        ),
+        "schema_file": "customers.schema.json",
         "primary_key": "customer_id",
         "timestamp_field": "created_at",
     },
     "transactions": {
         "raw_file_name": "transactions.json",
-        "schema_file": (
-            CONTRACTS_DIR
-            / "transactions.schema.json"
-        ),
+        "schema_file": "transactions.schema.json",
         "primary_key": "transaction_id",
         "timestamp_field": (
             "transaction_timestamp"
@@ -113,19 +108,13 @@ DATASETS = {
     },
     "fraud_signals": {
         "raw_file_name": "fraud_signals.json",
-        "schema_file": (
-            CONTRACTS_DIR
-            / "fraud_signals.schema.json"
-        ),
+        "schema_file": "fraud_signals.schema.json",
         "primary_key": "transaction_id",
         "timestamp_field": "score_timestamp",
     },
     "disputes": {
         "raw_file_name": "disputes.json",
-        "schema_file": (
-            CONTRACTS_DIR
-            / "disputes.schema.json"
-        ),
+        "schema_file": "disputes.schema.json",
         "primary_key": "dispute_id",
         "timestamp_field": "opened_date",
     },
@@ -133,10 +122,7 @@ DATASETS = {
         "raw_file_name": (
             "chargeback_outcomes.json"
         ),
-        "schema_file": (
-            CONTRACTS_DIR
-            / "chargeback_outcomes.schema.json"
-        ),
+        "schema_file": "chargeback_outcomes.schema.json",
         "primary_key": "chargeback_id",
         "timestamp_field": "resolved_date",
     },
@@ -228,6 +214,46 @@ def load_and_verify_raw_manifest(
             )
 
     return manifest
+
+
+def resolve_contract_version(
+    manifest: dict[str, Any],
+) -> str:
+    """
+    Resolve the data-contract version for one raw snapshot.
+
+    Historical V1 manifests did not include contract_version, so a missing
+    field intentionally falls back to V1. Explicit unsupported versions fail
+    closed instead of silently validating against the wrong schema.
+    """
+    contract_version = manifest.get(
+        "contract_version",
+        DEFAULT_CONTRACT_VERSION,
+    )
+
+    if (
+        not isinstance(contract_version, str)
+        or contract_version
+        not in SUPPORTED_CONTRACT_VERSIONS
+    ):
+        raise SystemExit(
+            "Unsupported raw-data contract version: "
+            f"{contract_version!r}."
+        )
+
+    return contract_version
+
+
+def schema_path_for(
+    config: dict[str, Any],
+    contract_version: str,
+) -> Path:
+    """Return the versioned JSON Schema path for one dataset."""
+    return (
+        CONTRACTS_ROOT
+        / contract_version
+        / config["schema_file"]
+    )
 
 
 def generate_run_id() -> str:
@@ -527,6 +553,104 @@ def validate_schema(
             invalid_record_indexes.add(
                 index
             )
+
+    return (
+        failures,
+        invalid_record_indexes,
+    )
+
+
+def parse_lifecycle_timestamp(
+    value: object,
+) -> datetime | None:
+    """Parse one supported source lifecycle timestamp."""
+    if not isinstance(value, str):
+        return None
+
+    for expected_format in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d",
+    ):
+        try:
+            return datetime.strptime(
+                value,
+                expected_format,
+            )
+        except ValueError:
+            continue
+
+    return None
+
+
+def validate_updated_at_semantics(
+    dataset_name: str,
+    records: list[
+        tuple[int, dict[str, Any]]
+    ],
+    primary_key: str,
+    lifecycle_field: str,
+) -> tuple[
+    list[dict[str, Any]],
+    set[int],
+]:
+    """
+    Require updated_at to be at or after the record lifecycle timestamp.
+
+    JSON Schema owns required-field, type, and timestamp-format failures.
+    This rule only compares values that are already parseable so validation
+    does not emit duplicate errors for the same malformed field.
+    """
+    failures: list[
+        dict[str, Any]
+    ] = []
+
+    invalid_record_indexes: set[
+        int
+    ] = set()
+
+    for index, (
+        line_number,
+        record,
+    ) in enumerate(records):
+        updated_at = parse_lifecycle_timestamp(
+            record.get("updated_at")
+        )
+        lifecycle_timestamp = (
+            parse_lifecycle_timestamp(
+                record.get(lifecycle_field)
+            )
+        )
+
+        if (
+            updated_at is None
+            or lifecycle_timestamp is None
+        ):
+            continue
+
+        if updated_at >= lifecycle_timestamp:
+            continue
+
+        failures.append(
+            {
+                "dataset": dataset_name,
+                "line_number": line_number,
+                "record_id": get_record_id(
+                    record,
+                    primary_key,
+                ),
+                "field": "updated_at",
+                "rule": (
+                    "updated_at_not_before_lifecycle"
+                ),
+                "severity": "hard_fail",
+                "message": (
+                    "updated_at cannot be earlier than "
+                    f"{lifecycle_field}."
+                ),
+            }
+        )
+
+        invalid_record_indexes.add(index)
 
     return (
         failures,
@@ -1128,6 +1252,7 @@ def validate_dataset(
     run_id: str,
     dataset_name: str,
     config: dict[str, Any],
+    contract_version: str,
     raw_run_dir: Path,
     validated_run_dir: Path,
     quarantine_run_dir: Path,
@@ -1199,7 +1324,7 @@ def validate_dataset(
             ),
             "dataset": dataset_name,
             "contract_version": (
-                CONTRACT_VERSION
+                contract_version
             ),
             "batch_status": batch_status,
             "pipeline_action": (
@@ -1284,7 +1409,10 @@ def validate_dataset(
         )
 
     schema = load_schema(
-        config["schema_file"]
+        schema_path_for(
+            config=config,
+            contract_version=contract_version,
+        )
     )
 
     primary_key = config[
@@ -1300,6 +1428,22 @@ def validate_dataset(
         schema=schema,
         primary_key=primary_key,
     )
+
+    if contract_version == "v2":
+        (
+            updated_at_failures,
+            updated_at_invalid_indexes,
+        ) = validate_updated_at_semantics(
+            dataset_name=dataset_name,
+            records=records,
+            primary_key=primary_key,
+            lifecycle_field=(
+                config["timestamp_field"]
+            ),
+        )
+    else:
+        updated_at_failures = []
+        updated_at_invalid_indexes = set()
 
     (
         duplicate_failures,
@@ -1338,6 +1482,7 @@ def validate_dataset(
 
     failed_rules = (
         schema_failures
+        + updated_at_failures
         + duplicate_failures
         + relationship_failures
         + warnings
@@ -1372,6 +1517,7 @@ def validate_dataset(
 
     invalid_record_indexes = (
         schema_invalid_indexes
+        | updated_at_invalid_indexes
         | duplicate_invalid_indexes
         | relationship_invalid_indexes
     )
@@ -1457,7 +1603,7 @@ def validate_dataset(
         "validation_run_at_utc": utc_now(),
         "dataset": dataset_name,
         "contract_version": (
-            CONTRACT_VERSION
+            contract_version
         ),
         "batch_status": batch_status,
         "pipeline_action": (
@@ -1628,10 +1774,15 @@ def main() -> None:
     # They do not require a complete run snapshot.
     requires_raw_snapshot = not args.input_file
 
+    contract_version = DEFAULT_CONTRACT_VERSION
+
     if requires_raw_snapshot:
-        load_and_verify_raw_manifest(
+        raw_manifest = load_and_verify_raw_manifest(
             run_id=run_id,
             raw_run_dir=raw_run_dir,
+        )
+        contract_version = resolve_contract_version(
+            raw_manifest
         )
 
     validated_run_dir = (
@@ -1755,6 +1906,7 @@ def main() -> None:
             run_id=run_id,
             dataset_name=dataset_name,
             config=config,
+            contract_version=contract_version,
             raw_run_dir=raw_run_dir,
             validated_run_dir=(
                 validated_run_dir
