@@ -159,19 +159,9 @@ def load_local_batch(
         dataset_name = dataset["dataset"]
         output_files = dataset.get("output_files")
 
-        if not isinstance(output_files, list) or not output_files:
+        if not isinstance(output_files, list):
             raise ValueError(
-                f"Manifest dataset {dataset_name} has no output files."
-            )
-
-        if dataset.get("partition_count") != len(output_files):
-            raise ValueError(
-                f"Manifest partition_count mismatch for {dataset_name}."
-            )
-
-        if dataset.get("records_missing_date") != 0:
-            raise ValueError(
-                f"Manifest reports records missing dates for {dataset_name}."
+                f"Manifest output_files is invalid for {dataset_name}."
             )
 
         records_partitioned = dataset.get("records_partitioned")
@@ -179,6 +169,30 @@ def load_local_batch(
         if not isinstance(records_partitioned, int) or records_partitioned < 0:
             raise ValueError(
                 f"Manifest records_partitioned is invalid for {dataset_name}."
+            )
+
+        partition_count = dataset.get("partition_count")
+
+        if partition_count != len(output_files):
+            raise ValueError(
+                f"Manifest partition_count mismatch for {dataset_name}."
+            )
+
+        if records_partitioned == 0 and output_files:
+            raise ValueError(
+                f"Manifest dataset {dataset_name} has output files "
+                "but zero partitioned records."
+            )
+
+        if records_partitioned > 0 and not output_files:
+            raise ValueError(
+                f"Manifest dataset {dataset_name} has no output files "
+                f"for {records_partitioned} partitioned records."
+            )
+
+        if dataset.get("records_missing_date") != 0:
+            raise ValueError(
+                f"Manifest reports records missing dates for {dataset_name}."
             )
 
         dataset_record_total += records_partitioned

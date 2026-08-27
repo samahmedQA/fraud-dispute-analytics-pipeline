@@ -18,6 +18,12 @@ VALIDATED_DATA_DIR = (
     / "validated"
 )
 
+INCREMENTAL_DATA_DIR = (
+    PROJECT_ROOT
+    / "data"
+    / "incremental"
+)
+
 PARTITIONED_DATA_DIR = (
     PROJECT_ROOT
     / "data"
@@ -97,6 +103,16 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Pipeline run ID whose validated "
             "files should be partitioned."
+        ),
+    )
+
+    parser.add_argument(
+        "--source",
+        choices=("validated", "incremental"),
+        default="validated",
+        help=(
+            "Input source to partition. "
+            "Default: validated."
         ),
     )
 
@@ -402,8 +418,14 @@ def write_manifest(
 def main() -> None:
     args = parse_args()
 
-    validated_run_dir = (
+    source_data_dir = (
         VALIDATED_DATA_DIR
+        if args.source == "validated"
+        else INCREMENTAL_DATA_DIR
+    )
+
+    validated_run_dir = (
+        source_data_dir
         / args.run_id
     )
 
@@ -419,14 +441,21 @@ def main() -> None:
 
     if not validated_run_dir.exists():
         print(
-            "Validated run directory "
+            f"{args.source.capitalize()} run directory "
             "does not exist:"
         )
         print(validated_run_dir)
-        print(
-            "Run validate_data_contracts.py "
-            "with the same --run-id first."
-        )
+
+        if args.source == "validated":
+            print(
+                "Run validate_data_contracts.py "
+                "with the same --run-id first."
+            )
+        else:
+            print(
+                "Run incremental-select "
+                "with the same --run-id first."
+            )
 
         raise SystemExit(1)
 
@@ -446,7 +475,7 @@ def main() -> None:
         f"Pipeline run ID: {args.run_id}"
     )
     print(
-        "Reading validated files from: "
+        f"Reading {args.source} files from: "
         f"{validated_run_dir}"
     )
     print(

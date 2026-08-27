@@ -8,7 +8,7 @@ The platform generates and processes **23,540 synthetic fintech records** across
 
 **Data Platform V1 release tag:** `v1.0.0-data-platform`
 
-**V2 status:** Source change tracking and stateful incremental selection are implemented. V2 uses deterministic `updated_at` semantics, versioned V1/V2 contracts, per-dataset watermarks, exact-boundary key tracking, and explicit checkpoint commits. Snowflake `MERGE` and incremental warehouse loading are not implemented yet.
+**V2 status:** Source change tracking, stateful incremental selection, and sparse incremental publication are implemented. V2 uses deterministic `updated_at` semantics, versioned V1/V2 contracts, per-dataset watermarks, exact-boundary key tracking, explicit checkpoint commits, and valid zero-row publication for unchanged datasets. Snowflake `MERGE` and incremental warehouse loading are not implemented yet.
 
 > This is a portfolio project built entirely with synthetic data. It contains no company data, customer data, credentials, or secrets.
 
@@ -21,7 +21,7 @@ The platform generates and processes **23,540 synthetic fintech records** across
 | Synthetic records | **23,540** |
 | Source datasets | **5** |
 | JSON Schema contract files | **10 (5 V1 + 5 V2)** |
-| pytest cases | **112** |
+| pytest cases | **117** |
 | dbt models | **13** |
 | Gold models | **5** |
 | Snowflake schemas | **4** |
@@ -163,7 +163,7 @@ python scripts/pipeline.py run `
 python -m pytest tests -q
 ```
 
-The repository contains **112 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, source change tracking, incremental selection and checkpoint recovery, V1/V2 contract compatibility, referential integrity, S3 idempotency, Snowflake load guardrails, dbt lineage assertions, supported loader behavior, and documentation alignment.
+The repository contains **117 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, source change tracking, incremental selection and checkpoint recovery, sparse incremental publication and zero-change batch handling, V1/V2 contract compatibility, referential integrity, S3 idempotency, Snowflake load guardrails, dbt lineage assertions, supported loader behavior, and documentation alignment.
 
 For stage-by-stage commands and external-system configuration, continue into the technical deep dive below.
 
@@ -794,17 +794,19 @@ streamlit run dashboards\streamlit_app.py
 
 The project intentionally distinguishes repository implementation from live external execution and production operation.
 
-| Capability | V1 status |
+| Capability | Status |
 |---|---|
 | Deterministic synthetic generation | **Implemented + tested** |
 | Immutable raw snapshots and raw-manifest verification | **Implemented + tested** |
 | Versioned V1/V2 data contracts | **Implemented + tested** |
 | Stateful incremental selection + checkpoints | **Implemented + tested** |
+| Sparse incremental partitioning + zero-change batches | **Implemented + tested** |
 | Semantic validation, duplicate detection, referential/composite integrity | **Implemented + tested** |
 | Severity-aware quarantine and failure handling | **Implemented + tested** |
-| Run-scoped validated output and partitioning | **Implemented + tested** |
+| Run-scoped validated and incremental output + partitioning | **Implemented + tested** |
 | Idempotent S3 publisher and completion-marker behavior | **Implemented + tested behavior; live mutation is opt-in** |
-| Guarded Snowflake loader | **Implemented + guardrail-tested; live execution requires a configured target** |
+| Guarded V1 Snowflake full-reload loader | **Implemented + guardrail-tested; live execution requires a configured target** |
+| Snowflake `MERGE` incremental warehouse loading | **Not implemented yet** |
 | 13 dbt model definitions and dbt tests | **Implemented** |
 | Current successful live dbt build | **Not claimed** |
 | Four-task Airflow local DAG | **Implemented for run ID → generate → validate → partition** |
