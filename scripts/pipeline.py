@@ -122,6 +122,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Existing pipeline run ID.",
     )
 
+    partition_parser.add_argument(
+        "--source",
+        choices=("validated", "incremental"),
+        default="validated",
+        help=(
+            "Input source to partition. "
+            "Default: validated."
+        ),
+    )
+
     incremental_select_parser = subparsers.add_parser(
         "incremental-select",
         help="Select new or changed V2 records for one pipeline run.",
@@ -308,15 +318,22 @@ def build_command(
         )
 
     if args.command == "partition":
-        return (
-            [
-                sys.executable,
-                "scripts/partition_data_for_s3.py",
-                "--run-id",
-                args.run_id,
-            ],
-            PROJECT_ROOT,
-        )
+        command = [
+            sys.executable,
+            "scripts/partition_data_for_s3.py",
+            "--run-id",
+            args.run_id,
+        ]
+
+        if args.source != "validated":
+            command.extend(
+                [
+                    "--source",
+                    args.source,
+                ]
+            )
+
+        return command, PROJECT_ROOT
 
     if args.command == "incremental-select":
         return (
