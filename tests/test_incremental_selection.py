@@ -281,3 +281,107 @@ def test_invalid_updated_at_fails_closed(tmp_path: Path):
 
     with pytest.raises(incremental.IncrementalSelectionError, match="Invalid customers.updated_at"):
         select(tmp_path, RUN_1, rows)
+
+def test_atomic_replace_succeeds_without_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+
+    sleeps: list[float] = []
+
+    monkeypatch.setattr(
+        incremental.time,
+        "sleep",
+        sleeps.append,
+    )
+
+    result = incremental.atomic_replace_with_retry(
+        source,
+        target,
+    )
+
+    assert result == target
+    assert target.exists()
+    assert not source.exists()
+    assert sleeps == []
+
+
+def test_atomic_replace_retries_transient_permission_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+
+    original_replace = Path.replace
+    calls = 0
+    sleeps: list[float] = []
+
+    def flaky_replace(self: Path, destination: Path):
+        nonlocal calls
+        calls += 1
+
+        if calls < 3:
+            raise PermissionError("temporary Windows filesystem lock")
+
+        return original_replace(self, destination)
+
+    monkeypatch.setattr(Path, "replace", flaky_replace)
+    monkeypatch.setattr(
+        incremental.time,
+        "sleep",
+        sleeps.append,
+    )
+
+    result = incremental.atomic_replace_with_retry(
+        source,
+        target,
+    )
+
+    assert result == target
+    assert calls == 3
+    assert sleeps == [0.05, 0.1]
+    assert target.exists()
+    assert not source.exists()
+
+
+def test_atomic_replace_raises_after_bounded_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+
+    calls = 0
+    sleeps: list[float] = []
+
+    def always_locked(self: Path, destination: Path):
+        nonlocal calls
+        calls += 1
+        raise PermissionError("persistent filesystem lock")
+
+    monkeypatch.setattr(Path, "replace", always_locked)
+    monkeypatch.setattr(
+        incremental.time,
+        "sleep",
+        sleeps.append,
+    )
+
+    with pytest.raises(
+        PermissionError,
+        match="persistent filesystem lock",
+    ):
+        incremental.atomic_replace_with_retry(
+            source,
+            target,
+        )
+
+    assert calls == 4
+    assert sleeps == [0.05, 0.1, 0.2]
+    assert source.exists()
+    assert not target.exists()
