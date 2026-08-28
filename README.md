@@ -8,7 +8,7 @@ The platform generates and processes **23,540 synthetic fintech records** across
 
 **Data Platform V1 release tag:** `v1.0.0-data-platform`
 
-**V2 status:** Source change tracking, stateful incremental selection, and sparse incremental publication are implemented. V2 uses deterministic `updated_at` semantics, versioned V1/V2 contracts, per-dataset watermarks, exact-boundary key tracking, explicit checkpoint commits, and valid zero-row publication for unchanged datasets. Snowflake `MERGE` and incremental warehouse loading are not implemented yet.
+**V2 status:** Source change tracking, stateful incremental selection, sparse incremental publication, and guarded Snowflake `MERGE` loading are implemented. V2 uses deterministic `updated_at` semantics, versioned V1/V2 contracts, per-dataset watermarks, exact-boundary key tracking, explicit checkpoint commits, valid zero-row publication for unchanged datasets, and primary-key-based warehouse upserts that reject malformed incremental loads and ignore same-version or stale updates. Incremental Snowflake behavior is automated-test and dry-run verified; live warehouse execution requires a configured Snowflake target.
 
 > This is a portfolio project built entirely with synthetic data. It contains no company data, customer data, credentials, or secrets.
 
@@ -21,7 +21,7 @@ The platform generates and processes **23,540 synthetic fintech records** across
 | Synthetic records | **23,540** |
 | Source datasets | **5** |
 | JSON Schema contract files | **10 (5 V1 + 5 V2)** |
-| pytest cases | **117** |
+| pytest cases | **124** |
 | dbt models | **13** |
 | Gold models | **5** |
 | Snowflake schemas | **4** |
@@ -57,7 +57,7 @@ This visual summarizes the end-to-end V1 platform at a glance. For the exact act
 | **Composite customer/account integrity** | The pipeline validates the `customer_id` + `account_id` relationship, preventing individually valid identifiers from forming an invalid pair. |
 | **Run-scoped lineage** | `pipeline_run_id`, source file, source row number, and load metadata make warehouse records traceable back to a specific batch and source record. |
 | **Idempotent S3 publication** | Completed identical run prefixes can be recognized safely; partial or conflicting prefixes are blocked unless replacement is explicit. |
-| **Guarded Snowflake promotion** | Data first lands in temporary RAW tables and must satisfy row, file, run-ID, and lineage checks before active RAW data is replaced. |
+| **Guarded Snowflake loading** | Data first lands in temporary RAW tables and must satisfy manifest and lineage checks before warehouse mutation. V1 performs guarded full replacement; V2 adds incremental primary-key, duplicate-key, and `updated_at` validation before `MERGE`. |
 | **Dry-run external execution** | S3 and Snowflake mutations require explicit execute flags, making local development and CI safe by default. |
 | **Recoverable, auditable runs** | Run IDs, validation reports, quarantine outputs, step-level audit records, and failure metadata preserve enough context to diagnose and replay a batch. |
 
@@ -163,7 +163,7 @@ python scripts/pipeline.py run `
 python -m pytest tests -q
 ```
 
-The repository contains **117 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, source change tracking, incremental selection and checkpoint recovery, sparse incremental publication and zero-change batch handling, V1/V2 contract compatibility, referential integrity, S3 idempotency, Snowflake load guardrails, dbt lineage assertions, supported loader behavior, and documentation alignment.
+The repository contains **124 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, source change tracking, incremental selection and checkpoint recovery, sparse incremental publication and zero-change batch handling, V1/V2 contract compatibility, referential integrity, S3 idempotency, guarded Snowflake full loading, incremental `MERGE` behavior, sparse and zero-change warehouse manifests, dbt lineage assertions, supported loader behavior, and documentation alignment.
 
 For stage-by-stage commands and external-system configuration, continue into the technical deep dive below.
 
@@ -468,6 +468,7 @@ The default SQL file is:
 
 ```text
 sql/load_raw_from_s3.sql
+sql/merge_raw_from_s3.sql
 ```
 
 The loader follows a guarded promotion sequence:
@@ -487,6 +488,33 @@ replace active RAW contents from validated temporary tables
 COMMIT
 ```
 
+### V2 incremental RAW loading
+
+V2 keeps the guarded V1 full-reload path intact and adds a separate incremental warehouse path. The CLI selects `sql/merge_raw_from_s3.sql` automatically when incremental mode is requested.
+
+Dry-run an incremental load:
+
+```powershell
+python scripts/pipeline.py load-snowflake `
+  --run-id $runId `
+  --mode incremental
+```
+
+Execute against a configured Snowflake target:
+
+```powershell
+python scripts/pipeline.py load-snowflake `
+  --run-id $runId `
+  --mode incremental `
+  --execute
+```
+
+Incremental manifests may contain sparse datasets or a fully zero-change batch. Before warehouse mutation, temporary RAW tables are checked against expected row and file counts, pipeline run lineage, required source metadata, dataset primary keys, duplicate primary keys, and parseable `updated_at` values.
+
+The five RAW merges use the source business keys: `customer_id`, `transaction_id`, `transaction_id`, `dispute_id`, and `chargeback_id`. Unseen keys are inserted. Existing keys are updated only when the incoming `updated_at` is newer than the warehouse version, so replaying the same batch or receiving an older version does not overwrite newer state.
+
+The incremental loader is covered by automated tests and has been verified through the repository's guarded local dry-run path. Live Snowflake `MERGE` execution is not claimed without a configured external target.
+
 The guardrail checkpoint occurs **before** the transaction that replaces active RAW contents. If staged data does not match the local partition manifest or required lineage expectations, promotion is blocked.
 
 RAW lineage fields include:
@@ -501,6 +529,8 @@ loaded_at
 ### Controlled full-reload tradeoff
 
 V1 uses a controlled full-RAW replacement pattern because the project is small, synthetic, batch oriented, and optimized for deterministic replay. The important property is not “full reload”; it is that replacement occurs only after a run-specific staged load passes guardrails.
+
+V2 preserves that V1 path for backward compatibility while adding a separate incremental `MERGE` path. Incremental loads may be sparse, including legitimate zero-row datasets, and warehouse rows are matched by dataset primary key with `updated_at` used to prevent same-version replays or stale records from replacing newer state.
 
 A materially larger append-oriented production workload would likely require different state-management and incremental-ingestion semantics. Those are production considerations, not requirements to make this V1 portfolio dataset artificially complex.
 
@@ -806,7 +836,7 @@ The project intentionally distinguishes repository implementation from live exte
 | Run-scoped validated and incremental output + partitioning | **Implemented + tested** |
 | Idempotent S3 publisher and completion-marker behavior | **Implemented + tested behavior; live mutation is opt-in** |
 | Guarded V1 Snowflake full-reload loader | **Implemented + guardrail-tested; live execution requires a configured target** |
-| Snowflake `MERGE` incremental warehouse loading | **Not implemented yet** |
+| Snowflake `MERGE` incremental warehouse loading | **Implemented + automated-test and dry-run verified; live execution requires a configured target** |
 | 13 dbt model definitions and dbt tests | **Implemented** |
 | Current successful live dbt build | **Not claimed** |
 | Four-task Airflow local DAG | **Implemented for run ID → generate → validate → partition** |
@@ -874,7 +904,8 @@ Key reusable Snowflake scripts:
 |---|---|
 | `sql/snowflake_setup.sql` | Creates core Snowflake objects and RAW landing tables |
 | `sql/setup_s3_stage_template.sql` | Template for storage integration and S3 external stage setup |
-| `sql/load_raw_from_s3.sql` | Run-scoped guarded RAW loading and promotion |
+| `sql/load_raw_from_s3.sql` | Guarded V1 full-RAW loading and replacement |
+| `sql/merge_raw_from_s3.sql` | Guarded V2 incremental RAW loading with primary-key and `updated_at`-based `MERGE` semantics |
 | `sql/validate_raw_counts.sql` | RAW row-count validation queries |
 | `sql/setup_snowflake_role_template.sql` | Role/grant setup template |
 | `sql/setup_snowpipe_template.sql` | Snowpipe configuration POC |

@@ -36,6 +36,16 @@ TEMP_TABLES = {
     ),
 }
 
+LOAD_MODES = ("full", "incremental")
+
+PRIMARY_KEYS = {
+    "customers": "customer_id",
+    "transactions": "transaction_id",
+    "fraud_signals": "transaction_id",
+    "disputes": "dispute_id",
+    "chargeback_outcomes": "chargeback_id",
+}
+
 GUARDRAIL_MARKER = (
     "SELECT "
     "'__PIPELINE_GUARDRAIL_VALIDATE_TEMP_LOAD__'"
@@ -104,12 +114,26 @@ def count_json_lines(file_path: Path) -> int:
     return count
 
 
+def validate_load_mode(load_mode: str) -> str:
+    """Validate the supported Snowflake RAW loading mode."""
+
+    if load_mode not in LOAD_MODES:
+        raise ValueError(
+            "Snowflake load mode must be one of: "
+            + ", ".join(LOAD_MODES)
+        )
+
+    return load_mode
+
+
 def load_partition_manifest(
     run_id: str,
+    load_mode: str = "full",
 ) -> dict[str, Any]:
     """Load and validate one local partition manifest."""
 
     validate_run_id(run_id)
+    validate_load_mode(load_mode)
 
     run_dir = PARTITIONED_ROOT / run_id
     manifest_path = run_dir / "partition_manifest.json"
@@ -185,7 +209,13 @@ def load_partition_manifest(
         output_files = dataset.get("output_files")
         partition_count = dataset.get("partition_count")
 
-        if not isinstance(received, int) or received < 1:
+        if not isinstance(received, int) or received < 0:
+            raise ValueError(
+                f"{dataset_name} records_received "
+                "must be a non-negative integer."
+            )
+
+        if load_mode == "full" and received < 1:
             raise ValueError(
                 f"{dataset_name} records_received "
                 "must be a positive integer."
@@ -203,10 +233,27 @@ def load_partition_manifest(
                 "partition dates."
             )
 
-        if not isinstance(output_files, list) or not output_files:
+        if not isinstance(output_files, list):
+            raise ValueError(
+                f"{dataset_name} output_files must be a list."
+            )
+
+        if load_mode == "full" and not output_files:
             raise ValueError(
                 f"{dataset_name} output_files must "
                 "be a non-empty list."
+            )
+
+        if received == 0 and output_files:
+            raise ValueError(
+                f"{dataset_name} has zero records but "
+                "contains output files."
+            )
+
+        if received > 0 and not output_files:
+            raise ValueError(
+                f"{dataset_name} has records but "
+                "contains no output files."
             )
 
         if partition_count != len(output_files):
@@ -349,8 +396,11 @@ def validate_temporary_load(
     cursor,
     run_id: str,
     manifest: dict[str, Any],
+    load_mode: str = "full",
 ) -> None:
     """Block promotion unless every temporary table matches the manifest."""
+
+    validate_load_mode(load_mode)
 
     print("\nGuardrail checkpoint: validating temporary loads.")
 
@@ -426,6 +476,89 @@ def validate_temporary_load(
                 "source_row_number metadata"
             )
 
+        if load_mode == "incremental":
+            primary_key = PRIMARY_KEYS[dataset_name]
+
+            cursor.execute(
+                f"""
+                SELECT
+                    COUNT_IF(
+                        raw_record:{primary_key}::STRING IS NULL
+                        OR TRIM(
+                            raw_record:{primary_key}::STRING
+                        ) = ''
+                    ) AS missing_primary_keys,
+                    COUNT_IF(
+                        raw_record:updated_at::STRING IS NULL
+                        OR TRY_TO_TIMESTAMP_NTZ(
+                            raw_record:updated_at::STRING
+                        ) IS NULL
+                    ) AS invalid_updated_at
+                FROM {table_name};
+                """
+            )
+
+            integrity_result = cursor.fetchone()
+
+            if integrity_result is None:
+                raise RuntimeError(
+                    "No incremental integrity validation result "
+                    f"returned for {table_name}."
+                )
+
+            (
+                missing_primary_keys,
+                invalid_updated_at,
+            ) = integrity_result
+
+            cursor.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM (
+                    SELECT
+                        raw_record:{primary_key}::STRING
+                            AS primary_key
+                    FROM {table_name}
+                    WHERE
+                        raw_record:{primary_key}::STRING
+                            IS NOT NULL
+                        AND TRIM(
+                            raw_record:{primary_key}::STRING
+                        ) <> ''
+                    GROUP BY 1
+                    HAVING COUNT(*) > 1
+                );
+                """
+            )
+
+            duplicate_result = cursor.fetchone()
+
+            if duplicate_result is None:
+                raise RuntimeError(
+                    "No incremental duplicate-key validation "
+                    f"result returned for {table_name}."
+                )
+
+            duplicate_primary_keys = duplicate_result[0]
+
+            if missing_primary_keys != 0:
+                problems.append(
+                    f"found {missing_primary_keys} rows without "
+                    f"{primary_key}"
+                )
+
+            if invalid_updated_at != 0:
+                problems.append(
+                    f"found {invalid_updated_at} rows with missing "
+                    "or invalid updated_at"
+                )
+
+            if duplicate_primary_keys != 0:
+                problems.append(
+                    f"found {duplicate_primary_keys} duplicate "
+                    f"{primary_key} values"
+                )
+
         if problems:
             raise RuntimeError(
                 f"Snowflake load guardrail failed for "
@@ -448,6 +581,7 @@ def run_sql_file(
     sql_file_path: str,
     dry_run: bool,
     run_id: str | None = None,
+    load_mode: str = "full",
 ) -> None:
     sql_path = PROJECT_ROOT / sql_file_path
 
@@ -467,9 +601,15 @@ def run_sql_file(
 
     manifest = None
 
+    validate_load_mode(load_mode)
+
     if run_id:
-        manifest = load_partition_manifest(run_id)
+        manifest = load_partition_manifest(
+            run_id,
+            load_mode=load_mode,
+        )
         print(f"Pipeline Run ID: {run_id}")
+        print(f"Load mode: {load_mode}")
         print(
             "Expected load: "
             f"{manifest['records_partitioned']} records "
@@ -517,6 +657,7 @@ def run_sql_file(
                     cursor,
                     run_id,
                     manifest,
+                    load_mode=load_mode,
                 )
                 continue
 
@@ -561,6 +702,17 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--mode",
+        choices=LOAD_MODES,
+        default="full",
+        help=(
+            "RAW loading mode. full preserves the existing "
+            "full-reload behavior; incremental allows sparse "
+            "batches and uses MERGE semantics. Default: full."
+        ),
+    )
+
+    parser.add_argument(
         "--execute",
         action="store_true",
         help=(
@@ -579,6 +731,7 @@ def main() -> None:
         sql_file_path=args.sql_file,
         dry_run=not args.execute,
         run_id=args.run_id,
+        load_mode=args.mode,
     )
 
 

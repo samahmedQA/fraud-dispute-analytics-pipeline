@@ -196,11 +196,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Existing pipeline run ID.",
     )
     snowflake_parser.add_argument(
-        "--sql-file",
-        default="sql/load_raw_from_s3.sql",
+        "--mode",
+        choices=("full", "incremental"),
+        default="full",
         help=(
-            "Snowflake RAW load SQL file. "
-            "Default: sql/load_raw_from_s3.sql."
+            "Snowflake RAW loading mode. "
+            "Default: full."
+        ),
+    )
+    snowflake_parser.add_argument(
+        "--sql-file",
+        default=None,
+        help=(
+            "Optional Snowflake RAW load SQL override. "
+            "Defaults to load_raw_from_s3.sql for full mode "
+            "and merge_raw_from_s3.sql for incremental mode."
         ),
     )
     snowflake_parser.add_argument(
@@ -380,14 +390,25 @@ def build_command(
         return command, PROJECT_ROOT
 
     if args.command == "load-snowflake":
+        sql_file = args.sql_file
+
+        if sql_file is None:
+            if args.mode == "incremental":
+                sql_file = "sql/merge_raw_from_s3.sql"
+            else:
+                sql_file = "sql/load_raw_from_s3.sql"
+
         command = [
             sys.executable,
             "scripts/run_snowflake_sql.py",
             "--sql-file",
-            args.sql_file,
+            sql_file,
             "--run-id",
             args.run_id,
         ]
+
+        if args.mode == "incremental":
+            command.extend(["--mode", "incremental"])
 
         if args.execute:
             command.append("--execute")
