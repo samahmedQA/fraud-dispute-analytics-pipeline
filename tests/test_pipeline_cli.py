@@ -254,3 +254,28 @@ def test_load_snowflake_and_dbt_build_commands():
         "ci",
     ]
     assert dbt_cwd == DBT_PROJECT_DIR
+
+def test_incremental_snowflake_mode_uses_merge_loader():
+    args = parse_cli_args(
+        [
+            "load-snowflake",
+            "--run-id",
+            RUN_ID,
+            "--mode",
+            "incremental",
+        ]
+    )
+
+    command, cwd = build_command(args)
+
+    assert command == [
+        sys.executable,
+        "scripts/run_snowflake_sql.py",
+        "--sql-file",
+        "sql/merge_raw_from_s3.sql",
+        "--run-id",
+        RUN_ID,
+        "--mode",
+        "incremental",
+    ]
+    assert cwd == PROJECT_ROOT
