@@ -279,3 +279,114 @@ def test_incremental_snowflake_mode_uses_merge_loader():
         "incremental",
     ]
     assert cwd == PROJECT_ROOT
+
+def test_run_incremental_mode_maps_recovery_orchestration():
+    args = parse_cli_args(
+        [
+            "run",
+            "--run-id",
+            RUN_ID,
+            "--skip-generate",
+            "--mode",
+            "incremental",
+            "--upload-s3",
+            "--bucket",
+            "example-bucket",
+            "--execute-s3",
+            "--load-snowflake",
+            "--execute-snowflake",
+        ]
+    )
+
+    command, cwd = build_command(args)
+
+    assert command == [
+        sys.executable,
+        "scripts/run_pipeline.py",
+        "--run-id",
+        RUN_ID,
+        "--skip-generate",
+        "--mode",
+        "incremental",
+        "--upload-s3",
+        "--s3-bucket",
+        "example-bucket",
+        "--execute-s3-upload",
+        "--reload-snowflake",
+        "--snowflake-reload-sql",
+        "sql/merge_raw_from_s3.sql",
+        "--execute-snowflake-reload",
+    ]
+
+    assert cwd == PROJECT_ROOT
+
+
+def test_run_full_mode_keeps_existing_snowflake_loader():
+    args = parse_cli_args(
+        [
+            "run",
+            "--run-id",
+            RUN_ID,
+            "--skip-generate",
+            "--load-snowflake",
+        ]
+    )
+
+    command, cwd = build_command(args)
+
+    assert command == [
+        sys.executable,
+        "scripts/run_pipeline.py",
+        "--run-id",
+        RUN_ID,
+        "--skip-generate",
+        "--reload-snowflake",
+        "--snowflake-reload-sql",
+        "sql/load_raw_from_s3.sql",
+    ]
+
+    assert "--mode" not in command
+    assert cwd == PROJECT_ROOT
+
+
+def test_run_incremental_execute_snowflake_requires_executed_s3():
+    with pytest.raises(SystemExit):
+        parse_cli_args(
+            [
+                "run",
+                "--run-id",
+                RUN_ID,
+                "--skip-generate",
+                "--mode",
+                "incremental",
+                "--load-snowflake",
+                "--execute-snowflake",
+            ]
+        )
+
+
+def test_run_incremental_allows_explicit_snowflake_sql_override():
+    args = parse_cli_args(
+        [
+            "run",
+            "--run-id",
+            RUN_ID,
+            "--skip-generate",
+            "--mode",
+            "incremental",
+            "--upload-s3",
+            "--bucket",
+            "example-bucket",
+            "--execute-s3",
+            "--load-snowflake",
+            "--sql-file",
+            "sql/custom_incremental.sql",
+            "--execute-snowflake",
+        ]
+    )
+
+    command, _ = build_command(args)
+
+    sql_index = command.index("--snowflake-reload-sql")
+
+    assert command[sql_index + 1] == "sql/custom_incremental.sql"

@@ -57,6 +57,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use existing files in data/raw instead of regenerating data.",
     )
     run_parser.add_argument(
+        "--mode",
+        choices=("full", "incremental"),
+        default="full",
+        help=(
+            "Pipeline processing mode. "
+            "Default: full."
+        ),
+    )
+    run_parser.add_argument(
         "--upload-s3",
         action="store_true",
         help="Run the S3 upload stage after partitioning.",
@@ -78,10 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument(
         "--sql-file",
-        default="sql/load_raw_from_s3.sql",
+        default=None,
         help=(
-            "Snowflake RAW load SQL file. "
-            "Default: sql/load_raw_from_s3.sql."
+            "Optional Snowflake RAW SQL override. "
+            "Defaults to load_raw_from_s3.sql in full mode "
+            "and merge_raw_from_s3.sql in incremental mode."
         ),
     )
     run_parser.add_argument(
@@ -254,6 +264,19 @@ def validate_command_args(
                 "--execute-snowflake requires --load-snowflake"
             )
 
+        if (
+            args.mode == "incremental"
+            and args.execute_snowflake
+            and not (
+                args.upload_s3
+                and args.execute_s3
+            )
+        ):
+            parser.error(
+                "incremental --execute-snowflake requires "
+                "--upload-s3 and --execute-s3"
+            )
+
     if args.command == "upload-s3" and not args.bucket:
         parser.error(
             "upload-s3 requires --bucket or FRAUD_DISPUTE_S3_BUCKET"
@@ -291,6 +314,9 @@ def build_command(
         if args.skip_generate:
             command.append("--skip-generate")
 
+        if args.mode == "incremental":
+            command.extend(["--mode", "incremental"])
+
         if args.upload_s3:
             command.append("--upload-s3")
             command.extend(["--s3-bucket", args.bucket])
@@ -300,10 +326,19 @@ def build_command(
 
         if args.load_snowflake:
             command.append("--reload-snowflake")
+
+            sql_file = args.sql_file
+
+            if sql_file is None:
+                if args.mode == "incremental":
+                    sql_file = "sql/merge_raw_from_s3.sql"
+                else:
+                    sql_file = "sql/load_raw_from_s3.sql"
+
             command.extend(
                 [
                     "--snowflake-reload-sql",
-                    args.sql_file,
+                    sql_file,
                 ]
             )
 
