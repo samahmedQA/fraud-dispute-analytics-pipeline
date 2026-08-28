@@ -21,7 +21,7 @@ The platform generates and processes **23,540 synthetic fintech records** across
 | Synthetic records | **23,540** |
 | Source datasets | **5** |
 | JSON Schema contract files | **10 (5 V1 + 5 V2)** |
-| pytest cases | **124** |
+| pytest cases | **127** |
 | dbt models | **13** |
 | Gold models | **5** |
 | Snowflake schemas | **4** |
@@ -163,7 +163,7 @@ python scripts/pipeline.py run `
 python -m pytest tests -q
 ```
 
-The repository contains **124 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, source change tracking, incremental selection and checkpoint recovery, sparse incremental publication and zero-change batch handling, V1/V2 contract compatibility, referential integrity, S3 idempotency, guarded Snowflake full loading, incremental `MERGE` behavior, sparse and zero-change warehouse manifests, dbt lineage assertions, supported loader behavior, and documentation alignment.
+The repository contains **127 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, source change tracking, incremental selection and checkpoint recovery, sparse incremental publication and zero-change batch handling, V1/V2 contract compatibility, referential integrity, S3 idempotency, guarded Snowflake full loading, incremental `MERGE` behavior, sparse and zero-change warehouse manifests, dbt lineage assertions, supported loader behavior, and documentation alignment.
 
 For stage-by-stage commands and external-system configuration, continue into the technical deep dive below.
 

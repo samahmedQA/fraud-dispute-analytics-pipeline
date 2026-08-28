@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -22,6 +23,9 @@ CHECKPOINT_VERSION = "1.0"
 SELECTION_VERSION = "1.0"
 SUPPORTED_CONTRACT_VERSION = "v2"
 ABSENT_CHECKPOINT_FINGERPRINT = "ABSENT"
+
+ATOMIC_REPLACE_MAX_ATTEMPTS = 4
+ATOMIC_REPLACE_INITIAL_DELAY_SECONDS = 0.05
 
 DATASETS: dict[str, dict[str, str]] = {
     "customers": {
@@ -53,6 +57,25 @@ class IncrementalSelectionError(RuntimeError):
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def atomic_replace_with_retry(
+    source: Path,
+    target: Path,
+    *,
+    max_attempts: int = ATOMIC_REPLACE_MAX_ATTEMPTS,
+    initial_delay_seconds: float = ATOMIC_REPLACE_INITIAL_DELAY_SECONDS,
+) -> Path:
+    """Atomically replace a path, retrying brief Windows permission locks."""
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return source.replace(target)
+        except PermissionError:
+            if attempt == max_attempts:
+                raise
+
+            delay_seconds = initial_delay_seconds * (2 ** (attempt - 1))
+            time.sleep(delay_seconds)
 
 
 def validate_run_id(run_id: str) -> str:
@@ -467,7 +490,7 @@ def select_incremental_run(
 
         if final_run_dir.exists():
             shutil.rmtree(final_run_dir)
-        temp_run_dir.replace(final_run_dir)
+        atomic_replace_with_retry(temp_run_dir, final_run_dir)
         return final_run_dir
 
     except Exception:
@@ -527,7 +550,7 @@ def commit_candidate_checkpoint(
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = checkpoint_path.with_suffix(checkpoint_path.suffix + ".tmp")
     write_json(temp_path, checkpoint_to_write)
-    temp_path.replace(checkpoint_path)
+    atomic_replace_with_retry(temp_path, checkpoint_path)
     return checkpoint_path
 
 
