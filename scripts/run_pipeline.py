@@ -38,6 +38,28 @@ def validate_run_id(run_id: str) -> str:
     return run_id
 
 
+def resolve_snowflake_sql(args: argparse.Namespace) -> str:
+    if args.snowflake_reload_sql:
+        return args.snowflake_reload_sql
+
+    if args.mode == "incremental":
+        return "sql/merge_raw_from_s3.sql"
+
+    return "sql/load_raw_from_s3.sql"
+
+
+def incremental_checkpoint_commit_eligible(
+    args: argparse.Namespace,
+) -> bool:
+    return (
+        args.mode == "incremental"
+        and args.upload_s3
+        and args.execute_s3_upload
+        and args.reload_snowflake
+        and args.execute_snowflake_reload
+    )
+
+
 def safe_count(value: Any) -> int:
     if value is None:
         return 0
@@ -192,6 +214,7 @@ def create_audit_record(
         "failure_reason": None,
         "command": " ".join(sys.argv),
         "config": {
+            "mode": getattr(args, "mode", "full"),
             "skip_generate": args.skip_generate,
             "upload_s3_requested": args.upload_s3,
             "s3_upload_mode": (
@@ -370,6 +393,16 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--mode",
+        choices=("full", "incremental"),
+        default="full",
+        help=(
+            "Pipeline processing mode. "
+            "Default: full."
+        ),
+    )
+
+    parser.add_argument(
         "--run-dbt",
         action="store_true",
         help=(
@@ -420,11 +453,11 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--snowflake-reload-sql",
-        default="sql/load_raw_from_s3.sql",
+        default=None,
         help=(
-            "SQL file used for Snowflake "
-            "RAW reload. Default: "
-            "sql/load_raw_from_s3.sql."
+            "Optional Snowflake RAW SQL override. "
+            "Defaults to load_raw_from_s3.sql in full mode "
+            "and merge_raw_from_s3.sql in incremental mode."
         ),
     )
 
@@ -458,6 +491,30 @@ def main() -> None:
         raise SystemExit(
             "--skip-generate requires --run-id so the pipeline "
             "knows which raw snapshot to reuse."
+        )
+
+    if (
+        args.mode == "incremental"
+        and args.execute_snowflake_reload
+        and not args.reload_snowflake
+    ):
+        raise SystemExit(
+            "--execute-snowflake-reload requires "
+            "--reload-snowflake in incremental mode."
+        )
+
+    if (
+        args.mode == "incremental"
+        and args.execute_snowflake_reload
+        and not (
+            args.upload_s3
+            and args.execute_s3_upload
+        )
+    ):
+        raise SystemExit(
+            "Executing an incremental Snowflake MERGE requires "
+            "--upload-s3 and --execute-s3-upload so the "
+            "run-scoped incremental files are durably published first."
         )
 
     audit_record = create_audit_record(args)
@@ -498,16 +555,38 @@ def main() -> None:
             audit_record=audit_record,
         )
 
+        if args.mode == "incremental":
+            run_step(
+                step_name="Select incremental changes",
+                command=[
+                    sys.executable,
+                    "scripts/incremental_selection.py",
+                    "select",
+                    "--run-id",
+                    run_id,
+                ],
+                audit_record=audit_record,
+            )
+
+        partition_command = [
+            sys.executable,
+            "scripts/partition_data_for_s3.py",
+            "--run-id",
+            run_id,
+        ]
+
+        if args.mode == "incremental":
+            partition_command.extend(
+                ["--source", "incremental"]
+            )
+
         run_step(
             step_name=(
-                "Partition validated data for S3"
+                "Partition incremental data for S3"
+                if args.mode == "incremental"
+                else "Partition validated data for S3"
             ),
-            command=[
-                sys.executable,
-                "scripts/partition_data_for_s3.py",
-                "--run-id",
-                run_id,
-            ],
+            command=partition_command,
             audit_record=audit_record,
         )
 
@@ -552,10 +631,15 @@ def main() -> None:
                 sys.executable,
                 "scripts/run_snowflake_sql.py",
                 "--sql-file",
-                args.snowflake_reload_sql,
+                resolve_snowflake_sql(args),
                 "--run-id",
                 run_id,
             ]
+
+            if args.mode == "incremental":
+                snowflake_command.extend(
+                    ["--mode", "incremental"]
+                )
 
             if args.execute_snowflake_reload:
                 snowflake_command.append(
@@ -564,8 +648,9 @@ def main() -> None:
 
             run_step(
                 step_name=(
-                    "Reload Snowflake RAW "
-                    "tables from S3"
+                    "Merge incremental Snowflake RAW tables from S3"
+                    if args.mode == "incremental"
+                    else "Reload Snowflake RAW tables from S3"
                 ),
                 command=snowflake_command,
                 audit_record=audit_record,
@@ -590,6 +675,27 @@ def main() -> None:
                 ],
                 audit_record=audit_record,
                 cwd=DBT_PROJECT_DIR,
+            )
+
+        if incremental_checkpoint_commit_eligible(args):
+            run_step(
+                step_name="Commit incremental checkpoint",
+                command=[
+                    sys.executable,
+                    "scripts/incremental_selection.py",
+                    "commit",
+                    "--run-id",
+                    run_id,
+                ],
+                audit_record=audit_record,
+            )
+        elif args.mode == "incremental":
+            print()
+            print(
+                "Incremental checkpoint was not committed. "
+                "A candidate remains available for retry because "
+                "durable S3 publication and executed Snowflake MERGE "
+                "were not both completed in this run."
             )
 
         audit_record["status"] = "SUCCESS"

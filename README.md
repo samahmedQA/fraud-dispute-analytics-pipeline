@@ -8,7 +8,7 @@ The platform generates and processes **23,540 synthetic fintech records** across
 
 **Data Platform V1 release tag:** `v1.0.0-data-platform`
 
-**V2 status:** Source change tracking, stateful incremental selection, sparse incremental publication, and guarded Snowflake `MERGE` loading are implemented. V2 uses deterministic `updated_at` semantics, versioned V1/V2 contracts, per-dataset watermarks, exact-boundary key tracking, explicit checkpoint commits, valid zero-row publication for unchanged datasets, and primary-key-based warehouse upserts that reject malformed incremental loads and ignore same-version or stale updates. Incremental Snowflake behavior is automated-test and dry-run verified; live warehouse execution requires a configured Snowflake target.
+**V2 status:** Source change tracking, stateful incremental selection, sparse incremental publication, guarded Snowflake `MERGE` loading, and recovery-aware end-to-end orchestration are implemented. V2 uses deterministic `updated_at` semantics, versioned V1/V2 contracts, per-dataset watermarks, exact-boundary key tracking, valid zero-row publication for unchanged datasets, and primary-key-based warehouse upserts that reject malformed incremental loads and ignore same-version or stale updates. The orchestrated incremental path commits its candidate checkpoint only after durable S3 publication and a successful executed Snowflake `MERGE`; downstream failure leaves committed state unchanged so the batch can be retried safely. Incremental Snowflake behavior is automated-test and dry-run verified; live warehouse execution requires a configured Snowflake target.
 
 > This is a portfolio project built entirely with synthetic data. It contains no company data, customer data, credentials, or secrets.
 
@@ -21,7 +21,7 @@ The platform generates and processes **23,540 synthetic fintech records** across
 | Synthetic records | **23,540** |
 | Source datasets | **5** |
 | JSON Schema contract files | **10 (5 V1 + 5 V2)** |
-| pytest cases | **127** |
+| pytest cases | **136** |
 | dbt models | **13** |
 | Gold models | **5** |
 | Snowflake schemas | **4** |
@@ -163,7 +163,7 @@ python scripts/pipeline.py run `
 python -m pytest tests -q
 ```
 
-The repository contains **127 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, source change tracking, incremental selection and checkpoint recovery, sparse incremental publication and zero-change batch handling, V1/V2 contract compatibility, referential integrity, S3 idempotency, guarded Snowflake full loading, incremental `MERGE` behavior, sparse and zero-change warehouse manifests, dbt lineage assertions, supported loader behavior, and documentation alignment.
+The repository contains **136 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, source change tracking, incremental selection and checkpoint recovery, sparse incremental publication and zero-change batch handling, V1/V2 contract compatibility, referential integrity, S3 idempotency, guarded Snowflake full loading, incremental `MERGE` behavior, sparse and zero-change warehouse manifests, dbt lineage assertions, supported loader behavior, and documentation alignment.
 
 For stage-by-stage commands and external-system configuration, continue into the technical deep dive below.
 
@@ -509,6 +509,22 @@ python scripts/pipeline.py load-snowflake `
   --execute
 ```
 
+For the recovery-aware end-to-end V2 path:
+
+```powershell
+python scripts/pipeline.py run `
+  --run-id $runId `
+  --skip-generate `
+  --mode incremental `
+  --upload-s3 `
+  --bucket $env:FRAUD_DISPUTE_S3_BUCKET `
+  --execute-s3 `
+  --load-snowflake `
+  --execute-snowflake
+```
+
+The committed checkpoint advances only after executed S3 publication and the Snowflake `MERGE` succeed. If a required downstream stage fails, the candidate checkpoint remains uncommitted and the previous committed watermark is preserved for safe retry.
+
 Incremental manifests may contain sparse datasets or a fully zero-change batch. Before warehouse mutation, temporary RAW tables are checked against expected row and file counts, pipeline run lineage, required source metadata, dataset primary keys, duplicate primary keys, and parseable `updated_at` values.
 
 The five RAW merges use the source business keys: `customer_id`, `transaction_id`, `transaction_id`, `dispute_id`, and `chargeback_id`. Unseen keys are inserted. Existing keys are updated only when the incoming `updated_at` is newer than the warehouse version, so replaying the same batch or receiving an older version does not overwrite newer state.
@@ -830,6 +846,7 @@ The project intentionally distinguishes repository implementation from live exte
 | Immutable raw snapshots and raw-manifest verification | **Implemented + tested** |
 | Versioned V1/V2 data contracts | **Implemented + tested** |
 | Stateful incremental selection + checkpoints | **Implemented + tested** |
+| Recovery-aware incremental orchestration with checkpoint commit after downstream success | **Implemented + tested** |
 | Sparse incremental partitioning + zero-change batches | **Implemented + tested** |
 | Semantic validation, duplicate detection, referential/composite integrity | **Implemented + tested** |
 | Severity-aware quarantine and failure handling | **Implemented + tested** |
