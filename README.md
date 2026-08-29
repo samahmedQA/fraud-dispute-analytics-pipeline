@@ -2,13 +2,13 @@
 
 [![CI](https://github.com/samahmedQA/fraud-dispute-analytics-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/samahmedQA/fraud-dispute-analytics-pipeline/actions/workflows/ci.yml)
 
-Production-style batch data platform for fraud, disputes, and chargebacks, designed around **reproducibility, data quality, lineage, idempotent publication, guarded warehouse loading, and recoverability** rather than simply connecting services together.
+Production-style stateful incremental data platform for fraud, disputes, and chargebacks, built around reliability, replay, incremental change processing, and failure-safe state management.
 
 The platform generates and processes **23,540 synthetic fintech records** across **5 source datasets** governed by **versioned V1/V2 JSON Schema contracts**, preserves immutable run-scoped inputs, validates data before external side effects, and carries pipeline lineage into Snowflake and downstream dbt models.
 
-**Data Platform V1 release tag:** `v1.0.0-data-platform`
+**Latest release:** `v2.0.0-incremental-platform` | **V1:** `v1.0.0-data-platform`
 
-**V2 status:** Source change tracking, stateful incremental selection, sparse incremental publication, guarded Snowflake `MERGE` loading, and recovery-aware end-to-end orchestration are implemented. V2 uses deterministic `updated_at` semantics, versioned V1/V2 contracts, per-dataset watermarks, exact-boundary key tracking, valid zero-row publication for unchanged datasets, and primary-key-based warehouse upserts that reject malformed incremental loads and ignore same-version or stale updates. The orchestrated incremental path commits its candidate checkpoint only after durable S3 publication and a successful executed Snowflake `MERGE`; downstream failure leaves committed state unchanged so the batch can be retried safely. Incremental Snowflake behavior is automated-test and dry-run verified; live warehouse execution requires a configured Snowflake target.
+**V2 highlights:** Stateful incremental selection, per-dataset watermarks, sparse publication, idempotent Snowflake `MERGE`, and failure-safe checkpoint commits.
 
 > This is a portfolio project built entirely with synthetic data. It contains no company data, customer data, credentials, or secrets.
 
@@ -29,21 +29,26 @@ The platform generates and processes **23,540 synthetic fintech records** across
 
 **Technology stack:** Python · AWS S3 · Snowflake · dbt · Apache Airflow · Docker · GitHub Actions · pytest · Streamlit
 
-The platform is intentionally batch-oriented at V1 scale. The engineering focus is reliable execution: stable inputs, explicit run identity, validation boundaries, safe replay, failure isolation, guarded publication, and auditable outcomes.
+V2 evolves the reliable V1 batch foundation into stateful incremental processing. The engineering focus is reliable execution: stable inputs, explicit run identity, validation boundaries, safe replay, failure isolation, guarded publication, and auditable outcomes.
 
 ---
 
-## Architecture
+## V2 Architecture
 
-<p align="center">
-  <img
-    src="docs/images/data-platform-architecture.png"
-    alt="Fraud & Dispute Analytics Data Platform architecture"
-    width="100%"
-  />
-</p>
+```mermaid
+flowchart LR
+ A[Raw Snapshot] --> B[Validation]
+ B --> C[Incremental Selection]
+ C --> D[Sparse Partitioning]
+ D --> E[S3 Publication]
+ E --> F[Snowflake MERGE]
+ F --> G[Required Stages Succeed]
+ G --> H[Commit Checkpoint Last]
+ C --> I[Candidate Checkpoint]
+ H -. next watermark .-> C
+```
 
-This visual summarizes the end-to-end V1 platform at a glance. For the exact active data path, see the simplified technical flow diagram in the Technical Deep Dive section below.
+V2 processes only new or changed records and supports zero-change batches. Committed ingestion state advances only after required downstream stages succeed, allowing failed runs to retry safely.
 
 ## Key Engineering Decisions
 
@@ -65,14 +70,19 @@ These choices are the core of the project: the platform is designed around what 
 
 ---
 
-## Platform Demo
+## V2 Incremental Proof
 
-> Visual evidence is intentionally deferred to a separate README screenshot PR after this information-architecture change is reviewed.
+**Baseline:** 23,540 records received -> 23,540 selected
 
-<!-- README PR #2: Streamlit analytics screenshot -->
-<!-- README PR #2: GitHub Actions CI screenshot -->
-<!-- README PR #2: Snowflake batch-lineage screenshot -->
-<!-- README PR #2: Airflow DAG execution screenshot -->
+**Identical replay:** 23,540 received -> 0 selected
+
+**One customer changed:** 23,540 received -> 1 selected
+
+**Committed version replayed:** 23,540 received -> 0 selected
+
+### Failure Recovery
+
+Checkpoint state advances only after required downstream stages succeed. If S3, Snowflake, or requested dbt work fails, the candidate checkpoint remains uncommitted and the prior watermark is preserved for safe retry.
 
 ---
 
@@ -89,7 +99,7 @@ This project simulates that domain and builds reliable reporting layers for:
 - Average dispute resolution time
 - Pipeline and batch-level monitoring
 
-The analytical outputs matter, but V1 is primarily an engineering project: it demonstrates how data is generated, validated, published, loaded, traced, and recovered before it becomes a dashboard metric.
+The analytical outputs matter, but this is primarily an engineering project: it demonstrates how data is generated, validated, published, loaded, traced, and recovered before it becomes a dashboard metric.
 
 ---
 
@@ -145,7 +155,15 @@ python scripts/pipeline.py run
 
 The default run performs local generation, validation, and partitioning. External S3 and Snowflake stages are not executed unless they are explicitly requested and their execute flags are supplied.
 
-### 3. Replay an existing immutable raw snapshot
+### 3. Preview the V2 incremental path
+
+```powershell
+python scripts/pipeline.py run --mode incremental
+```
+
+This runs V2 locally in safe mode. Candidate state stays uncommitted unless required downstream execution succeeds.
+
+### 4. Replay an existing immutable raw snapshot
 
 Replace the example with a real run ID already present under `data/raw/<run_id>/`:
 
@@ -157,7 +175,7 @@ python scripts/pipeline.py run `
   --skip-generate
 ```
 
-### 4. Run the automated tests
+### 5. Run the automated tests
 
 ```powershell
 python -m pytest tests -q
@@ -171,7 +189,7 @@ For stage-by-stage commands and external-system configuration, continue into the
 
 # Technical Deep Dive
 
-## Technical Pipeline Flow
+## V1 Full-Batch Technical Flow
 
 ```mermaid
 flowchart TD
@@ -201,7 +219,7 @@ flowchart TD
     DBT --> OUT
 ```
 
-The solid arrows represent the active V1 data path. Invalid records are routed to run-scoped quarantine and validation reports.
+This diagram documents the preserved V1 full-batch data path. Invalid records are routed to run-scoped quarantine and validation reports.
 
 The current Airflow DAG ends after `partition_validated_data`; S3 publication, Snowflake loading, and dbt are not current Airflow tasks.
 
@@ -236,6 +254,8 @@ s3://<bucket>/raw/run_id=<run_id>/<dataset>/year=YYYY/month=MM/...
 ```
 
 Only validated records are eligible for partitioning. A quarantined record does not silently continue downstream.
+
+In V2, incremental selection writes run-scoped output under `data/incremental/<run_id>/`, while committed ingestion state is stored separately in `data/incremental_state/checkpoint.json` and advances only after required downstream success.
 
 The stage-oriented CLI exposes the lifecycle directly:
 
@@ -523,7 +543,7 @@ python scripts/pipeline.py run `
   --execute-snowflake
 ```
 
-The committed checkpoint advances only after executed S3 publication and the Snowflake `MERGE` succeed. If a required downstream stage fails, the candidate checkpoint remains uncommitted and the previous committed watermark is preserved for safe retry.
+The committed checkpoint advances only after executed S3 publication and the Snowflake `MERGE` succeed, plus dbt when that downstream stage is requested. If a required downstream stage fails, the candidate checkpoint remains uncommitted and the previous committed watermark is preserved for safe retry.
 
 Incremental manifests may contain sparse datasets or a fully zero-change batch. Before warehouse mutation, temporary RAW tables are checked against expected row and file counts, pipeline run lineage, required source metadata, dataset primary keys, duplicate primary keys, and parseable `updated_at` values.
 
@@ -531,7 +551,7 @@ The five RAW merges use the source business keys: `customer_id`, `transaction_id
 
 The incremental loader is covered by automated tests and has been verified through the repository's guarded local dry-run path. Live Snowflake `MERGE` execution is not claimed without a configured external target.
 
-The guardrail checkpoint occurs **before** the transaction that replaces active RAW contents. If staged data does not match the local partition manifest or required lineage expectations, promotion is blocked.
+V2 warehouse guardrails run **before** any target-table `MERGE`. If staged data does not match the local partition manifest or required lineage expectations, promotion is blocked.
 
 RAW lineage fields include:
 
@@ -931,7 +951,7 @@ Key reusable Snowflake scripts:
 
 ## Production Considerations
 
-V1 is intentionally sized as a portfolio platform, so “production hardening” is treated as a set of architectural questions rather than a shopping list of additional tools.
+This project is intentionally sized as a portfolio platform, so production hardening is treated as a set of architectural questions rather than a shopping list of additional tools.
 
 At materially larger scale or under production operational requirements, the design would need decisions around:
 
@@ -944,7 +964,7 @@ At materially larger scale or under production operational requirements, the des
 - **Orchestration:** managed deployment, durable scheduling, backfills, notifications, concurrency controls, and service-level expectations
 - **Access control:** environment-specific Snowflake roles and separation of operational duties
 
-The current controlled full-reload design does not need to be replaced merely to add complexity. It is appropriate to the V1 workload because it is guarded, run scoped, replayable, and explicit about its tradeoffs.
+The guarded V1 full-reload path remains available for backward-compatible replay, while V2 is the primary stateful incremental path. Each approach is explicit about its tradeoffs and failure semantics.
 
 ---
 
@@ -952,7 +972,7 @@ The current controlled full-reload design does not need to be replaced merely to
 
 The next project phase is a grounded fraud/dispute investigation layer built **on top of** the completed data-platform foundation. The goal is to answer investigation questions using structured platform data and curated supporting documents while preserving source attribution and evaluation boundaries.
 
-That AI layer is **not part of Data Platform V1 and is not implemented or claimed here**.
+That AI layer is **not implemented or claimed as part of the current data-platform release**.
 
 ---
 

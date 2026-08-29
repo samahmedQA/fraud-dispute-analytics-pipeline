@@ -40,3 +40,6 @@ s3_snowpipe_notification_config.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local pipeline runtime artifacts
+/data/
