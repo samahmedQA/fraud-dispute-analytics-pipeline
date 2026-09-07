@@ -360,6 +360,7 @@ def write_manifest(
     validated_run_dir: Path,
     output_run_dir: Path,
     dataset_results: list[dict[str, Any]],
+    generated_at_utc: str | None = None,
 ) -> Path:
     """
     Write metadata describing the partitioned
@@ -368,7 +369,7 @@ def write_manifest(
 
     manifest = {
         "run_id": run_id,
-        "generated_at_utc": utc_now(),
+        "generated_at_utc": generated_at_utc or utc_now(),
         "source_directory": str(
             validated_run_dir.relative_to(
                 PROJECT_ROOT
@@ -459,6 +460,29 @@ def main() -> None:
 
         raise SystemExit(1)
 
+    # Preserve the original manifest timestamp so rebuilding the same
+    # immutable run produces the same manifest bytes and remains idempotent.
+    existing_generated_at_utc = None
+    existing_manifest_path = (
+        output_run_dir
+        / "partition_manifest.json"
+    )
+
+    if existing_manifest_path.is_file():
+        try:
+            existing_manifest = json.loads(
+                existing_manifest_path.read_text(
+                    encoding="utf-8"
+                )
+            )
+            existing_generated_at_utc = (
+                existing_manifest.get(
+                    "generated_at_utc"
+                )
+            )
+        except (OSError, json.JSONDecodeError):
+            existing_generated_at_utc = None
+
     # Clear only this run's output.
     # Previous pipeline runs remain available.
     if output_run_dir.exists():
@@ -520,6 +544,9 @@ def main() -> None:
         ),
         dataset_results=(
             dataset_results
+        ),
+        generated_at_utc=(
+            existing_generated_at_utc
         ),
     )
 

@@ -414,12 +414,21 @@ def validate_temporary_load(
             SELECT
                 COUNT(*) AS row_count,
                 COUNT(DISTINCT source_file) AS file_count,
-                COUNT_IF(
-                    pipeline_run_id IS NULL
-                    OR pipeline_run_id <> '{run_id}'
+                COALESCE(
+                    COUNT_IF(
+                        pipeline_run_id IS NULL
+                        OR pipeline_run_id <> '{run_id}'
+                    ),
+                    0
                 ) AS wrong_run_rows,
-                COUNT_IF(source_file IS NULL) AS missing_source_files,
-                COUNT_IF(source_row_number IS NULL) AS missing_row_numbers
+                COALESCE(
+                    COUNT_IF(source_file IS NULL),
+                    0
+                ) AS missing_source_files,
+                COALESCE(
+                    COUNT_IF(source_row_number IS NULL),
+                    0
+                ) AS missing_row_numbers
             FROM {table_name};
             """
         )
@@ -482,17 +491,23 @@ def validate_temporary_load(
             cursor.execute(
                 f"""
                 SELECT
-                    COUNT_IF(
-                        raw_record:{primary_key}::STRING IS NULL
-                        OR TRIM(
-                            raw_record:{primary_key}::STRING
-                        ) = ''
+                    COALESCE(
+                        COUNT_IF(
+                            raw_record:{primary_key}::STRING IS NULL
+                            OR TRIM(
+                                raw_record:{primary_key}::STRING
+                            ) = ''
+                        ),
+                        0
                     ) AS missing_primary_keys,
-                    COUNT_IF(
-                        raw_record:updated_at::STRING IS NULL
-                        OR TRY_TO_TIMESTAMP_NTZ(
-                            raw_record:updated_at::STRING
-                        ) IS NULL
+                    COALESCE(
+                        COUNT_IF(
+                            raw_record:updated_at::STRING IS NULL
+                            OR TRY_TO_TIMESTAMP_NTZ(
+                                raw_record:updated_at::STRING
+                            ) IS NULL
+                        ),
+                        0
                     ) AS invalid_updated_at
                 FROM {table_name};
                 """

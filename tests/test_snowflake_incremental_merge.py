@@ -259,3 +259,35 @@ def test_merge_sql_preserves_incremental_idempotency_rules():
     assert "WHEN NOT MATCHED THEN" in sql
     assert "raw_record:updated_at" in sql
     assert "TRY_TO_TIMESTAMP_NTZ" in sql
+
+def test_incremental_guardrail_coalesces_empty_count_if_results():
+    results = []
+
+    for _ in run_snowflake_sql.REQUIRED_DATASETS:
+        results.extend(
+            [
+                (0, 0, 0, 0, 0),
+                (0, 0),
+                (0,),
+            ]
+        )
+
+    cursor = FakeCursor(results)
+
+    run_snowflake_sql.validate_temporary_load(
+        cursor,
+        RUN_ID,
+        incremental_manifest(),
+        load_mode="incremental",
+    )
+
+    sql = "\n".join(cursor.queries)
+
+    # Five COUNT_IF checks per dataset must coalesce NULL -> 0
+    # so sparse incremental datasets with zero rows are valid.
+    expected_coalesce_count = (
+        len(run_snowflake_sql.REQUIRED_DATASETS) * 5
+    )
+
+    assert sql.count("COALESCE(") == expected_coalesce_count
+    assert "COUNT_IF(" in sql
