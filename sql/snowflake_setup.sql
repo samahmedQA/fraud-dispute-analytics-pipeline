@@ -1,6 +1,9 @@
--- Purpose:
+﻿-- Purpose:
 -- Bootstrap the Snowflake objects required for the fraud dispute analytics pipeline.
 --
+-- Run this bootstrap with an administrative role.
+USE ROLE ACCOUNTADMIN;
+
 -- This script creates the warehouse, database, schemas, RAW landing tables
 -- and JSON file format used by the controlled S3 reload process.
 --
