@@ -166,6 +166,102 @@ def test_all_zero_incremental_batch_is_valid(
     assert batch.file_count == 0
 
 
+def test_repartition_same_run_preserves_manifest_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path / "project"
+    incremental_root = (
+        project_root
+        / "data"
+        / "incremental"
+    )
+    partitioned_root = (
+        project_root
+        / "data"
+        / "s3_partitioned"
+    )
+    source_run_dir = incremental_root / RUN_ID
+    source_run_dir.mkdir(parents=True)
+
+    for config in partition_data_for_s3.DATASETS.values():
+        (
+            source_run_dir
+            / config["input_file"]
+        ).write_text(
+            "",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        partition_data_for_s3,
+        "PROJECT_ROOT",
+        project_root,
+    )
+    monkeypatch.setattr(
+        partition_data_for_s3,
+        "INCREMENTAL_DATA_DIR",
+        incremental_root,
+    )
+    monkeypatch.setattr(
+        partition_data_for_s3,
+        "PARTITIONED_DATA_DIR",
+        partitioned_root,
+    )
+
+    timestamps = iter(
+        [
+            "2026-09-07T18:00:00Z",
+            "2026-09-07T18:01:00Z",
+        ]
+    )
+
+    monkeypatch.setattr(
+        partition_data_for_s3,
+        "utc_now",
+        lambda: next(timestamps),
+    )
+
+    args = type(
+        "Args",
+        (),
+        {
+            "source": "incremental",
+            "run_id": RUN_ID,
+        },
+    )()
+
+    monkeypatch.setattr(
+        partition_data_for_s3,
+        "parse_args",
+        lambda: args,
+    )
+
+    partition_data_for_s3.main()
+
+    manifest_path = (
+        partitioned_root
+        / RUN_ID
+        / "partition_manifest.json"
+    )
+    first_manifest = manifest_path.read_bytes()
+
+    partition_data_for_s3.main()
+    second_manifest = manifest_path.read_bytes()
+
+    assert first_manifest == second_manifest
+
+    manifest = json.loads(
+        second_manifest.decode("utf-8")
+    )
+    assert (
+        manifest["generated_at_utc"]
+        == "2026-09-07T18:00:00Z"
+    )
+
+
+
+
 def test_nonzero_dataset_still_requires_output_file(
     tmp_path,
     monkeypatch,

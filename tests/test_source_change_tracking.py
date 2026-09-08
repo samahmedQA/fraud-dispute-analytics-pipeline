@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -197,6 +197,58 @@ def test_same_seed_produces_identical_source_hashes_across_runs(
         )
 
 
+def test_snapshot_rename_retries_transient_permission_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+
+    original_rename = Path.rename
+    attempts = {"count": 0}
+    sleep_calls: list[float] = []
+
+    def flaky_rename(
+        self: Path,
+        target: Path,
+    ) -> Path:
+        if self == source:
+            attempts["count"] += 1
+
+            if attempts["count"] == 1:
+                raise PermissionError(
+                    "simulated transient Windows file lock"
+                )
+
+        return original_rename(self, target)
+
+    monkeypatch.setattr(
+        Path,
+        "rename",
+        flaky_rename,
+    )
+    monkeypatch.setattr(
+        generator.time,
+        "sleep",
+        sleep_calls.append,
+    )
+
+    generator.rename_directory_with_retry(
+        source,
+        destination,
+        attempts=3,
+        base_delay_seconds=0.2,
+    )
+
+    assert attempts["count"] == 2
+    assert sleep_calls == [0.2]
+    assert destination.exists()
+    assert not source.exists()
+
+
+
+
 def test_historical_manifest_without_contract_version_uses_v1(
 ) -> None:
     assert resolve_contract_version({}) == "v1"
@@ -324,3 +376,50 @@ def test_v2_contract_rejects_missing_updated_at(
         and "updated_at" in failure["message"]
         for failure in failures
     )
+
+def test_snapshot_rename_re_raises_persistent_permission_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+
+    attempts = {"count": 0}
+    sleep_calls: list[float] = []
+
+    def always_fail(
+        self: Path,
+        target: Path,
+    ) -> Path:
+        attempts["count"] += 1
+        raise PermissionError(
+            "persistent filesystem contention"
+        )
+
+    monkeypatch.setattr(
+        Path,
+        "rename",
+        always_fail,
+    )
+    monkeypatch.setattr(
+        generator.time,
+        "sleep",
+        sleep_calls.append,
+    )
+
+    with pytest.raises(
+        PermissionError,
+        match="persistent filesystem contention",
+    ):
+        generator.rename_directory_with_retry(
+            source,
+            destination,
+            attempts=3,
+            base_delay_seconds=0.2,
+        )
+
+    assert attempts["count"] == 3
+    assert sleep_calls == [0.2, 0.4]
+    assert source.exists()
+    assert not destination.exists()

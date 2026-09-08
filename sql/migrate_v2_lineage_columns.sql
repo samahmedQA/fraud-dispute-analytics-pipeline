@@ -1,0 +1,47 @@
+-- Purpose:
+-- One-time migration for deployments created before V2 lineage columns existed.
+--
+-- Fresh installations using snowflake_setup.sql already include these columns
+-- and do not need to run this migration.
+--
+-- Run with a role that owns the RAW tables or has sufficient ALTER privileges.
+-- Normal FRAUD_DISPUTE_ROLE pipeline execution should not perform permanent DDL.
+
+USE ROLE ACCOUNTADMIN;
+USE DATABASE FRAUD_DISPUTE_DB;
+USE SCHEMA RAW;
+
+ALTER TABLE RAW_CUSTOMERS
+    ADD COLUMN IF NOT EXISTS pipeline_run_id VARCHAR;
+ALTER TABLE RAW_CUSTOMERS
+    ADD COLUMN IF NOT EXISTS source_file VARCHAR;
+ALTER TABLE RAW_CUSTOMERS
+    ADD COLUMN IF NOT EXISTS source_row_number NUMBER;
+
+ALTER TABLE RAW_TRANSACTIONS
+    ADD COLUMN IF NOT EXISTS pipeline_run_id VARCHAR;
+ALTER TABLE RAW_TRANSACTIONS
+    ADD COLUMN IF NOT EXISTS source_file VARCHAR;
+ALTER TABLE RAW_TRANSACTIONS
+    ADD COLUMN IF NOT EXISTS source_row_number NUMBER;
+
+ALTER TABLE RAW_FRAUD_SIGNALS
+    ADD COLUMN IF NOT EXISTS pipeline_run_id VARCHAR;
+ALTER TABLE RAW_FRAUD_SIGNALS
+    ADD COLUMN IF NOT EXISTS source_file VARCHAR;
+ALTER TABLE RAW_FRAUD_SIGNALS
+    ADD COLUMN IF NOT EXISTS source_row_number NUMBER;
+
+ALTER TABLE RAW_DISPUTES
+    ADD COLUMN IF NOT EXISTS pipeline_run_id VARCHAR;
+ALTER TABLE RAW_DISPUTES
+    ADD COLUMN IF NOT EXISTS source_file VARCHAR;
+ALTER TABLE RAW_DISPUTES
+    ADD COLUMN IF NOT EXISTS source_row_number NUMBER;
+
+ALTER TABLE RAW_CHARGEBACK_OUTCOMES
+    ADD COLUMN IF NOT EXISTS pipeline_run_id VARCHAR;
+ALTER TABLE RAW_CHARGEBACK_OUTCOMES
+    ADD COLUMN IF NOT EXISTS source_file VARCHAR;
+ALTER TABLE RAW_CHARGEBACK_OUTCOMES
+    ADD COLUMN IF NOT EXISTS source_row_number NUMBER;

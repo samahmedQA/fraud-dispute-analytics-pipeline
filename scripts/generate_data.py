@@ -6,6 +6,7 @@ import json
 import random
 import re
 import shutil
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -549,6 +550,24 @@ def write_snapshot(
     return raw_manifest
 
 
+def rename_directory_with_retry(
+    source: Path,
+    destination: Path,
+    attempts: int = 5,
+    base_delay_seconds: float = 0.2,
+) -> None:
+    """Rename a directory, retrying transient Windows permission errors."""
+    for attempt in range(1, attempts + 1):
+        try:
+            source.rename(destination)
+            return
+        except PermissionError:
+            if destination.exists() or attempt == attempts:
+                raise
+
+            time.sleep(base_delay_seconds * attempt)
+
+
 def create_snapshot(
     raw_data_root: Path,
     run_id: str,
@@ -586,7 +605,10 @@ def create_snapshot(
         )
 
         try:
-            temporary_dir.rename(output_dir)
+            rename_directory_with_retry(
+                temporary_dir,
+                output_dir,
+            )
         except OSError:
             if not output_dir.exists():
                 raise

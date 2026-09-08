@@ -1,4 +1,4 @@
-# Fraud & Dispute Analytics Data Platform
+﻿# Fraud & Dispute Analytics Data Platform
 
 [![CI](https://github.com/samahmedQA/fraud-dispute-analytics-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/samahmedQA/fraud-dispute-analytics-pipeline/actions/workflows/ci.yml)
 
@@ -21,7 +21,7 @@ The platform generates and processes **23,540 synthetic fintech records** across
 | Synthetic records | **23,540** |
 | Source datasets | **5** |
 | JSON Schema contract files | **10 (5 V1 + 5 V2)** |
-| pytest cases | **136** |
+| pytest cases | **140** |
 | dbt models | **13** |
 | Gold models | **5** |
 | Snowflake schemas | **4** |
@@ -181,7 +181,7 @@ python scripts/pipeline.py run `
 python -m pytest tests -q
 ```
 
-The repository contains **136 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, source change tracking, incremental selection and checkpoint recovery, sparse incremental publication and zero-change batch handling, V1/V2 contract compatibility, referential integrity, S3 idempotency, guarded Snowflake full loading, incremental `MERGE` behavior, sparse and zero-change warehouse manifests, dbt lineage assertions, supported loader behavior, and documentation alignment.
+The repository contains **140 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, source change tracking, incremental selection and checkpoint recovery, sparse incremental publication and zero-change batch handling, V1/V2 contract compatibility, referential integrity, S3 idempotency, guarded Snowflake full loading, incremental `MERGE` behavior, sparse and zero-change warehouse manifests, dbt lineage assertions, supported loader behavior, and documentation alignment.
 
 For stage-by-stage commands and external-system configuration, continue into the technical deep dive below.
 
@@ -459,6 +459,22 @@ sql/snowflake_setup.sql
 
 It defines the core warehouse, database, schemas, JSON file format, and five RAW landing tables.
 
+### Clone and adapt this platform
+
+This repository is designed as a reusable reference implementation rather than a deployment tied to one cloud account.
+
+A team can replace environment-specific configuration, source contracts, and business models while keeping the reliability framework.
+
+Recommended bootstrap order:
+
+1. Run `sql/snowflake_setup.sql` to create the core Snowflake objects.
+2. Configure `sql/setup_s3_stage_template.sql` with the AWS role ARN and S3 bucket.
+3. Configure `sql/setup_snowflake_role_template.sql` with the target Snowflake user.
+4. For pre-V2 deployments only, run `sql/migrate_v2_lineage_columns.sql` with an admin role.
+5. Replace the synthetic sources, contracts, and dbt models with organization-specific implementations.
+
+The reusable framework keeps data contracts, incremental checkpoints, idempotent S3 publication, guarded Snowflake loading, dbt testing, lineage, audit logging, and safe failure recovery.
+
 ### Run-specific guarded RAW load
 
 The supported loader consumes a single published S3 run:
@@ -549,7 +565,7 @@ Incremental manifests may contain sparse datasets or a fully zero-change batch. 
 
 The five RAW merges use the source business keys: `customer_id`, `transaction_id`, `transaction_id`, `dispute_id`, and `chargeback_id`. Unseen keys are inserted. Existing keys are updated only when the incoming `updated_at` is newer than the warehouse version, so replaying the same batch or receiving an older version does not overwrite newer state.
 
-The incremental loader is covered by automated tests and has been verified through the repository's guarded local dry-run path. Live Snowflake `MERGE` execution is not claimed without a configured external target.
+The incremental loader is covered by automated tests and has also been verified against live AWS S3 and Snowflake infrastructure. Live runs have exercised baseline loading, one-record incremental `MERGE`, zero-change batches, idempotent replay, and downstream failure/retry recovery without advancing the committed checkpoint prematurely.
 
 V2 warehouse guardrails run **before** any target-table `MERGE`. If staged data does not match the local partition manifest or required lineage expectations, promotion is blocked.
 
@@ -940,6 +956,7 @@ Key reusable Snowflake scripts:
 | Script | Purpose |
 |---|---|
 | `sql/snowflake_setup.sql` | Creates core Snowflake objects and RAW landing tables |
+| `sql/migrate_v2_lineage_columns.sql` | One-time migration for pre-V2 RAW lineage columns |
 | `sql/setup_s3_stage_template.sql` | Template for storage integration and S3 external stage setup |
 | `sql/load_raw_from_s3.sql` | Guarded V1 full-RAW loading and replacement |
 | `sql/merge_raw_from_s3.sql` | Guarded V2 incremental RAW loading with primary-key and `updated_at`-based `MERGE` semantics |
