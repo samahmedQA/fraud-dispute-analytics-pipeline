@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -6,6 +6,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 README = PROJECT_ROOT / "README.md"
+TECHNICAL_DEEP_DIVE = PROJECT_ROOT / "docs" / "technical-deep-dive.md"
 AIRFLOW_README = PROJECT_ROOT / "airflow" / "README.md"
 DBT_README = (
     PROJECT_ROOT
@@ -26,8 +27,11 @@ SAMPLE_AUDIT = (
 )
 
 
-def test_readme_uses_current_cli_and_airflow_scope():
-    text = README.read_text(encoding="utf-8")
+def test_documentation_uses_current_cli_and_airflow_scope():
+    text = (
+        README.read_text(encoding="utf-8")
+        + TECHNICAL_DEEP_DIVE.read_text(encoding="utf-8")
+    )
 
     for expected in (
         "python scripts/pipeline.py validate",
