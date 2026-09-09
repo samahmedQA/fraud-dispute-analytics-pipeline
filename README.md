@@ -2,87 +2,90 @@
 
 [![CI](https://github.com/samahmedQA/fraud-dispute-analytics-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/samahmedQA/fraud-dispute-analytics-pipeline/actions/workflows/ci.yml)
 
-Production-style stateful incremental data platform for fraud, disputes, and chargebacks, built around reliability, replay, incremental change processing, and failure-safe state management.
+A production-style incremental data platform for fraud and dispute analytics, built with Python, AWS S3, Snowflake, dbt, and Airflow.
 
-The platform generates and processes **23,540 synthetic fintech records** across **5 source datasets** governed by **versioned V1/V2 JSON Schema contracts**, preserves immutable run-scoped inputs, validates data before external side effects, and carries pipeline lineage into Snowflake and downstream dbt models.
+The platform processes **23,540 synthetic fintech records** across **5 related datasets** using versioned data contracts, stateful incremental selection, idempotent S3 publication, guarded Snowflake `MERGE` operations, dbt transformations, end-to-end lineage, audit logging, and failure-safe checkpointing.
 
-**Latest release:** `v2.0.0-incremental-platform` | **V1:** `v1.0.0-data-platform`
+**Current release:** `v2.0.0-incremental-platform` | **V1:** `v1.0.0-data-platform`
 
-**V2 highlights:** Stateful incremental selection, per-dataset watermarks, sparse publication, idempotent Snowflake `MERGE`, and failure-safe checkpoint commits.
-
-> This is a portfolio project built entirely with synthetic data. It contains no company data, customer data, credentials, or secrets.
-
----
-
-## At a Glance
-
-| Metric | Current repository |
-|---|---:|
-| Synthetic records | **23,540** |
-| Source datasets | **5** |
-| JSON Schema contract files | **10 (5 V1 + 5 V2)** |
-| pytest cases | **140** |
-| dbt models | **13** |
-| Gold models | **5** |
-| Snowflake schemas | **4** |
-| External-system execution | **Dry-run by default** |
-
-**Technology stack:** Python · AWS S3 · Snowflake · dbt · Apache Airflow · Docker · GitHub Actions · pytest · Streamlit
-
-V2 evolves the reliable V1 batch foundation into stateful incremental processing. The engineering focus is reliable execution: stable inputs, explicit run identity, validation boundaries, safe replay, failure isolation, guarded publication, and auditable outcomes.
+> This is an independent portfolio/reference implementation built entirely with synthetic data. It contains no employer, customer, or production data, credentials, or secrets.
 
 ---
 
 ## V2 Architecture
 
 ```mermaid
-flowchart LR
- A[Raw Snapshot] --> B[Validation]
- B --> C[Incremental Selection]
- C --> D[Sparse Partitioning]
- D --> E[S3 Publication]
- E --> F[Snowflake MERGE]
- F --> G[Required Stages Succeed]
- G --> H[Commit Checkpoint Last]
- C --> I[Candidate Checkpoint]
- H -. next watermark .-> C
+flowchart TD
+    A[Run-Scoped Raw Snapshot] --> B[Contract + Integrity Validation]
+    B --> C[Incremental Selection]
+    J[Committed Checkpoint] --> C
+    C --> D[Sparse Partitioning]
+    C --> K[Candidate Checkpoint]
+    D --> E[Idempotent S3 Publication]
+    E --> F[Snowflake Temporary RAW]
+    F --> G[Manifest + Lineage Guardrails]
+    G --> H[Transactional MERGE]
+    H --> I[Requested dbt Build]
+    I --> L[Required Stages Succeed]
+    K --> M[Commit Checkpoint Last]
+    L --> M
+    M --> J
 ```
 
 V2 processes only new or changed records and supports zero-change batches. Committed ingestion state advances only after required downstream stages succeed, allowing failed runs to retry safely.
 
-## Key Engineering Decisions
+---
 
-| Decision | Engineering rationale |
-|---|---|
-| **Immutable run-scoped raw snapshots** | A replay reads the same owned input batch instead of whatever files happen to exist later. |
-| **Deterministic generation + manifest verification** | A seeded run can be reproduced, while row counts, file sizes, and SHA-256 hashes detect changed or incomplete input snapshots. |
-| **Validation before external side effects** | Contract and integrity failures are resolved before the pipeline can mutate S3 or Snowflake. |
-| **Severity-aware data quality** | Structural corruption, quarantinable relationship failures, and operational warnings produce different pipeline actions instead of one generic failure mode. |
-| **Valid-parent-only referential integrity** | A child record cannot pass integrity checks merely because its referenced parent exists physically; the parent must itself be valid. |
-| **Composite customer/account integrity** | The pipeline validates the `customer_id` + `account_id` relationship, preventing individually valid identifiers from forming an invalid pair. |
-| **Run-scoped lineage** | `pipeline_run_id`, source file, source row number, and load metadata make warehouse records traceable back to a specific batch and source record. |
-| **Idempotent S3 publication** | Completed identical run prefixes can be recognized safely; partial or conflicting prefixes are blocked unless replacement is explicit. |
-| **Guarded Snowflake loading** | Data first lands in temporary RAW tables and must satisfy manifest and lineage checks before warehouse mutation. V1 performs guarded full replacement; V2 adds incremental primary-key, duplicate-key, and `updated_at` validation before `MERGE`. |
-| **Dry-run external execution** | S3 and Snowflake mutations require explicit execute flags, making local development and CI safe by default. |
-| **Recoverable, auditable runs** | Run IDs, validation reports, quarantine outputs, step-level audit records, and failure metadata preserve enough context to diagnose and replay a batch. |
+## What Makes It Production-Style
 
-These choices are the core of the project: the platform is designed around what happens when data is wrong, a run is replayed, a publication is incomplete, or the same batch is executed again.
+- **Stateful incremental processing** — per-dataset watermarks identify only new or changed records instead of reprocessing the full dataset.
+- **Boundary-safe checkpoints** — watermark state tracks records already seen at the current timestamp boundary so equal-timestamp records are not lost.
+- **Idempotent publication** — completed S3 batches can be safely recognized and replayed without creating duplicate output.
+- **Guarded Snowflake MERGE** — incoming data is validated in temporary RAW tables before transactional inserts or updates reach persistent tables.
+- **Failure-safe state management** — candidate checkpoints are committed only after requested downstream stages succeed, preserving safe retry behavior.
+- **End-to-end lineage and auditability** — run IDs, source metadata, validation reports, warehouse lineage, and step-level audit records make each batch traceable.
+
+The design focuses on operational correctness: what happens when data changes, a run is replayed, downstream work fails, or the same batch is executed again.
 
 ---
 
-## V2 Incremental Proof
+## At a Glance
 
-**Baseline:** 23,540 records received -> 23,540 selected
+| Area | Current platform |
+|---|---|
+| **Data** | 23,540 synthetic records across 5 related datasets |
+| **Contracts** | 10 versioned JSON Schema contracts across V1 and V2 |
+| **Incremental state** | Per-dataset watermarks with boundary-safe primary-key state |
+| **Storage** | Live AWS S3 with immutable, run-scoped, idempotent publication |
+| **Warehouse** | Live Snowflake RAW layer with guarded transactional `MERGE` |
+| **Transformation** | 13 dbt models across Bronze, Silver, Gold, and Monitoring |
+| **dbt verification** | 42/42 successful build resources |
+| **Automated testing** | 140 pytest cases |
+| **Orchestration** | Airflow for local pipeline stages; Python orchestrator for the full V2 cloud lifecycle |
+| **CI** | GitHub Actions |
 
-**Identical replay:** 23,540 received -> 0 selected
+**Technology stack:** Python · AWS S3 · Snowflake · dbt · Apache Airflow · Docker · GitHub Actions · pytest · Streamlit
 
-**One customer changed:** 23,540 received -> 1 selected
+V2 has been exercised against live AWS S3, Snowflake, and dbt infrastructure while preserving safe local and CI defaults.
 
-**Committed version replayed:** 23,540 received -> 0 selected
+---
 
-### Failure Recovery
+## Incremental Processing
 
-Checkpoint state advances only after required downstream stages succeed. If S3, Snowflake, or requested dbt work fails, the candidate checkpoint remains uncommitted and the prior watermark is preserved for safe retry.
+V2 compares each validated source record against the last committed per-dataset checkpoint and selects only records that are new or changed.
+
+The checkpoint stores both the latest `updated_at` watermark and the primary keys already processed at that timestamp boundary. This prevents records with equal timestamps from being skipped.
+
+**Incremental behavior verified:**
+
+- Baseline load: **23,540 received → 23,540 selected**
+- One customer changed: **23,540 received → 1 selected**
+- Identical replay after commit: **23,540 received → 0 selected**
+- Zero-change batches continue safely without unnecessary warehouse updates
+
+> **Live proof:** a controlled update to one customer selected exactly one record while leaving the committed checkpoint unchanged until downstream execution completed.
+
+![Incremental selection proof: 23,540 records received and 1 record selected](docs/images/04-v2-one-record-incremental-selection.png)
 
 ---
 
