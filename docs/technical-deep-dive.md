@@ -1,4 +1,4 @@
-﻿# Technical Deep Dive
+# Technical Deep Dive
 
 ## V1 Full-Batch Technical Flow
 
@@ -792,5 +792,38 @@ Key reusable Snowflake scripts:
 | `sql/validate_raw_counts.sql` | RAW row-count validation queries |
 | `sql/setup_snowflake_role_template.sql` | Role/grant setup template |
 | `sql/setup_snowpipe_template.sql` | Snowpipe configuration POC |
+
+---
+
+---
+
+## Operational Hardening
+
+Live execution exposed several edge cases that were converted into permanent fixes and regression tests.
+
+- **Zero-row Snowflake guardrails** — `COUNT_IF` returned `NULL` for empty incremental tables. Guardrail queries now normalize empty results to zero so valid zero-change batches complete safely.
+- **Windows snapshot finalization** — atomic directory promotion occasionally encountered transient filesystem contention. Snapshot finalization now uses bounded retry behavior without silently replacing an existing destination.
+- **Same-run S3 recovery** — rebuilding a partition manifest regenerated its timestamp and changed the manifest hash even when the data was identical. Same-run rebuilds now preserve stable manifest metadata so completed S3 batches can be verified and safely reused during recovery.
+
+Each issue was reproduced, fixed, covered by regression tests, and revalidated through the affected execution path.
+
+---
+
+## Production Considerations
+
+This project is intentionally sized as a portfolio platform, so production hardening is treated as a set of architectural questions rather than a shopping list of additional tools.
+
+At materially larger scale or under production operational requirements, the design would need decisions around:
+
+- **Infrastructure lifecycle:** repeatable provisioning, environment isolation, ownership, and change control for cloud and warehouse resources
+- **Secrets and identity:** managed credentials, least-privilege roles, key rotation, and workload identity
+- **Ingestion state:** append/incremental semantics, file-level load state, late-arriving data, replay boundaries, and deduplication across batches
+- **Warehouse promotion:** stronger deployment and rollback patterns for concurrent or continuously arriving workloads
+- **Transformation strategy:** incremental model behavior where full rebuilds are no longer appropriate
+- **Observability:** freshness, volume, quality, and run-failure alerting with operational ownership and escalation paths
+- **Orchestration:** managed deployment, durable scheduling, backfills, notifications, concurrency controls, and service-level expectations
+- **Access control:** environment-specific Snowflake roles and separation of operational duties
+
+The guarded V1 full-reload path remains available for backward-compatible replay, while V2 is the primary stateful incremental path. Each approach is explicit about its tradeoffs and failure semantics.
 
 ---
