@@ -10,12 +10,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 st.set_page_config(
-    page_title="Fraud & Dispute Analytics Pipeline",
+    page_title="Fraud & Dispute Analytics Dashboard",
     layout="wide"
 )
 
-st.title("Fraud & Dispute Analytics Pipeline")
-st.caption("AWS S3 -> Snowflake -> dbt -> Gold Marts -> Streamlit Dashboard")
+st.title("Fraud & Dispute Analytics Dashboard")
+st.caption("Live fraud, dispute, chargeback, and pipeline-health analytics from Snowflake Gold and Monitoring layers")
 
 
 REQUIRED_ENV_VARS = [
@@ -136,70 +136,136 @@ high_risk_transactions = int(fraud_summary["HIGH_RISK_TRANSACTIONS"].sum())
 total_disputes = int(dispute_summary["TOTAL_DISPUTES"].sum())
 total_chargebacks = int(dispute_summary["TOTAL_CHARGEBACKS"].sum())
 
+high_risk_rate = (
+    high_risk_transactions / total_transactions * 100
+    if total_transactions
+    else 0.0
+)
+
+chargeback_rate = (
+    total_chargebacks / total_disputes * 100
+    if total_disputes
+    else 0.0
+)
+
 col1.metric("Total Transactions", f"{total_transactions:,}")
-col2.metric("High-Risk Transactions", f"{high_risk_transactions:,}")
+col2.metric("High-Risk Rate", f"{high_risk_rate:.1f}%")
 col3.metric("Total Disputes", f"{total_disputes:,}")
-col4.metric("Total Chargebacks", f"{total_chargebacks:,}")
+col4.metric("Chargeback Rate", f"{chargeback_rate:.1f}%")
+
+run_ids = sorted(
+    fraud_summary["PIPELINE_RUN_ID"].dropna().astype(str).unique(),
+    reverse=True,
+)
+
+with st.expander("Technical Run Details"):
+    if run_ids:
+        st.write(f"Latest pipeline run: `{run_ids[0]}`")
+    st.write("Source: Snowflake Gold and Monitoring layers")
 
 
 st.header("Fraud Risk by Card Network")
 
-left, right = st.columns(2)
+high_risk_chart = fraud_summary.set_index("CARD_NETWORK")[["HIGH_RISK_RATE_PCT"]]
+st.bar_chart(high_risk_chart)
 
-with left:
-    st.subheader("Fraud Summary")
-    st.dataframe(fraud_summary, use_container_width=True)
-
-with right:
-    st.subheader("High-Risk Rate %")
-    high_risk_chart = fraud_summary.set_index("CARD_NETWORK")[["HIGH_RISK_RATE_PCT"]]
-    st.bar_chart(high_risk_chart)
+with st.expander("View fraud summary data"):
+    st.dataframe(
+        fraud_summary.drop(columns=["PIPELINE_RUN_ID"], errors="ignore"),
+        use_container_width=True,
+    )
 
 
 st.header("Dispute & Chargeback Outcomes")
 
-left, right = st.columns(2)
+dispute_chart = dispute_summary.set_index("CARD_NETWORK")[[
+    "TOTAL_DISPUTES",
+    "TOTAL_CHARGEBACKS",
+]]
+st.bar_chart(dispute_chart, stack=False)
 
-with left:
-    st.subheader("Dispute Summary")
-    st.dataframe(dispute_summary, use_container_width=True)
-
-with right:
-    st.subheader("Disputes vs Chargebacks")
-    dispute_chart = dispute_summary.set_index("CARD_NETWORK")[[
-        "TOTAL_DISPUTES",
-        "TOTAL_CHARGEBACKS"
-    ]]
-    st.bar_chart(dispute_chart)
+with st.expander("View dispute summary data"):
+    st.dataframe(
+        dispute_summary.drop(columns=["PIPELINE_RUN_ID"], errors="ignore"),
+        use_container_width=True,
+    )
 
 
-st.header("Daily KPI Tables")
+st.header("Daily Trends")
 
-tab1, tab2 = st.tabs(["Daily Fraud KPIs", "Daily Dispute KPIs"])
+fraud_tab, dispute_tab = st.tabs(["Fraud Activity", "Dispute Activity"])
 
-with tab1:
-    st.dataframe(daily_fraud, use_container_width=True)
+with fraud_tab:
+    fraud_trend = (
+        daily_fraud
+        .groupby("TRANSACTION_DATE", as_index=False)[
+            ["TOTAL_TRANSACTIONS", "HIGH_RISK_TRANSACTIONS"]
+        ]
+        .sum()
+        .sort_values("TRANSACTION_DATE")
+        .set_index("TRANSACTION_DATE")
+        .rename(columns={
+            "TOTAL_TRANSACTIONS": "Total Transactions",
+            "HIGH_RISK_TRANSACTIONS": "High-Risk Transactions",
+        })
+    )
 
-with tab2:
-    st.dataframe(daily_disputes, use_container_width=True)
+    st.line_chart(fraud_trend)
+
+    with st.expander("View daily fraud data"):
+        st.dataframe(
+            daily_fraud.drop(columns=["PIPELINE_RUN_ID"], errors="ignore"),
+            use_container_width=True,
+        )
+
+with dispute_tab:
+    dispute_trend = (
+        daily_disputes
+        .groupby("DISPUTE_OPENED_DATE", as_index=False)[
+            ["TOTAL_DISPUTES", "TOTAL_CHARGEBACKS"]
+        ]
+        .sum()
+        .sort_values("DISPUTE_OPENED_DATE")
+        .set_index("DISPUTE_OPENED_DATE")
+        .rename(columns={
+            "TOTAL_DISPUTES": "Total Disputes",
+            "TOTAL_CHARGEBACKS": "Total Chargebacks",
+        })
+    )
+
+    st.line_chart(dispute_trend)
+
+    with st.expander("View daily dispute data"):
+        st.dataframe(
+            daily_disputes.drop(columns=["PIPELINE_RUN_ID"], errors="ignore"),
+            use_container_width=True,
+        )
 
 
-st.header("Pipeline Monitoring")
+st.header("Pipeline Health")
 
-st.subheader("Row Counts")
-st.dataframe(row_counts, use_container_width=True)
+monitored_objects = row_counts["OBJECT_NAME"].nunique()
+monitored_layers = row_counts["LAYER"].nunique()
+latest_check = pd.to_datetime(row_counts["CHECKED_AT"]).max()
 
-row_count_column = get_first_existing_column(row_counts, ["ROW_COUNT", "RECORD_COUNT", "COUNT"])
-group_column = get_first_existing_column(
-    row_counts,
-    ["SCHEMA_NAME", "TABLE_SCHEMA", "SCHEMA", "LAYER", "PIPELINE_LAYER", "TABLE_NAME"]
+health1, health2, health3 = st.columns(3)
+health1.metric("Monitored Objects", f"{monitored_objects:,}")
+health2.metric("Pipeline Layers", f"{monitored_layers:,}")
+health3.metric("Last Checked", latest_check.strftime("%b %d, %Y %H:%M"))
+
+st.subheader("Rows by Pipeline Layer")
+
+layer_counts = (
+    row_counts
+    .groupby("LAYER", as_index=False)["ROW_COUNT"]
+    .sum()
+    .set_index("LAYER")
+    .rename(columns={"ROW_COUNT": "Rows"})
 )
 
-if row_count_column and group_column:
-    monitoring_chart = row_counts.groupby(group_column)[row_count_column].sum()
-    st.bar_chart(monitoring_chart)
-else:
-    st.info("Monitoring chart skipped because the expected row-count columns were not found.")
+st.bar_chart(layer_counts)
 
+with st.expander("View pipeline monitoring data"):
+    st.dataframe(row_counts, use_container_width=True)
 
-st.caption("Synthetic data only. No production data, customer data, or company data is used.")
+st.caption("Synthetic portfolio data only.")

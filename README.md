@@ -1,10 +1,10 @@
-﻿# Fraud & Dispute Analytics Data Platform
+# Fraud & Dispute Analytics Data Platform
 
 [![CI](https://github.com/samahmedQA/fraud-dispute-analytics-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/samahmedQA/fraud-dispute-analytics-pipeline/actions/workflows/ci.yml)
 
 A production-style incremental data platform for fraud and dispute analytics, built with Python, AWS S3, Snowflake, dbt, and Airflow.
 
-The platform processes **23,540 synthetic fintech records** across **5 related datasets** using versioned data contracts, stateful incremental selection, idempotent S3 publication, guarded Snowflake `MERGE` operations, dbt transformations, end-to-end lineage, audit logging, and failure-safe checkpointing.
+The platform uses versioned data contracts, stateful incremental selection, idempotent S3 publication, guarded Snowflake `MERGE` operations, dbt transformations, end-to-end lineage, audit logging, and failure-safe checkpointing.
 
 **Current release:** `v2.0.0-incremental-platform` | **V1:** `v1.0.0-data-platform`
 
@@ -15,28 +15,21 @@ The platform processes **23,540 synthetic fintech records** across **5 related d
 ## V2 Architecture
 
 ```mermaid
-flowchart TD
-    A[Run-Scoped Raw Snapshot] --> B[Contract + Integrity Validation]
-    B --> C[Incremental Selection]
-    J[Committed Checkpoint] --> C
-    C --> D[Sparse Partitioning]
-    C --> K[Candidate Checkpoint]
-    D --> E[Idempotent S3 Publication]
-    E --> F[Snowflake Temporary RAW]
-    F --> G[Manifest + Lineage Guardrails]
-    G --> H[Transactional MERGE]
-    H --> I[Requested dbt Build]
-    I --> L[Required Stages Succeed]
-    K --> M[Commit Checkpoint Last]
-    L --> M
-    M --> J
+flowchart LR
+    A[Run-Scoped Snapshot] --> B[Validate]
+    B --> C[Select New / Changed]
+    C --> D[Idempotent S3 Publication]
+    D --> E[Guarded Snowflake MERGE]
+    E --> F[Requested dbt Build]
+    F --> G[Commit Checkpoint Last]
+    G -. next watermark .-> C
 ```
 
 V2 processes only new or changed records and supports zero-change batches. Committed ingestion state advances only after required downstream stages succeed, allowing failed runs to retry safely.
 
 ---
 
-## What Makes It Production-Style
+## Reliability Design
 
 - **Stateful incremental processing** — per-dataset watermarks identify only new or changed records instead of reprocessing the full dataset.
 - **Boundary-safe checkpoints** — watermark state tracks records already seen at the current timestamp boundary so equal-timestamp records are not lost.
@@ -167,7 +160,7 @@ Snowflake RAW data is transformed through **13 dbt models** across Bronze, Silve
 - **5 Gold models** produce business-facing fraud and dispute analytics
 - **1 Monitoring model** tracks pipeline row counts across warehouse layers
 
-The live V2 build completed successfully with **42/42 resources passed, 0 warnings, 0 errors, and 0 skips**.
+A live V2 dbt build completed successfully against the configured Snowflake target.
 
 ![Successful live dbt build with all 42 resources passing](docs/images/07-v2-dbt-build-success.png)
 
@@ -267,72 +260,9 @@ python scripts/pipeline.py run `
 python -m pytest tests -q
 ```
 
-The repository contains **140 pytest cases** covering pipeline reliability, CLI behavior, semantic validation, source change tracking, incremental selection and checkpoint recovery, sparse incremental publication and zero-change batch handling, V1/V2 contract compatibility, referential integrity, S3 idempotency, guarded Snowflake full loading, incremental `MERGE` behavior, sparse and zero-change warehouse manifests, dbt lineage assertions, supported loader behavior, and documentation alignment.
+The automated suite covers pipeline reliability, incremental state and recovery, data quality, S3 idempotency, Snowflake loading and `MERGE` behavior, lineage, CLI behavior, and documentation alignment.
 
 For stage-by-stage commands and external-system configuration, continue into the technical deep dive below.
-
----
-
-## Testing & CI
-
-The repository includes **140 pytest cases** covering the reliability behavior of the platform, not only individual helper functions.
-
-Coverage includes incremental selection, checkpoint recovery, zero-change batches, S3 idempotency, guarded Snowflake loading, incremental `MERGE` behavior, lineage assertions, data-quality rules, V1/V2 compatibility, CLI behavior, and documentation alignment.
-
-GitHub Actions runs the automated validation workflow on repository changes, providing a repeatable CI gate for the project.
-
-**Current verification:**
-
-- **140 pytest cases passing**
-- **dbt build: 42/42 successful resources**
-- **GitHub Actions CI passing on `main`**
-
----
-
-## Operational Hardening
-
-Live execution exposed several edge cases that were converted into permanent fixes and regression tests.
-
-- **Zero-row Snowflake guardrails** — `COUNT_IF` returned `NULL` for empty incremental tables. Guardrail queries now normalize empty results to zero so valid zero-change batches complete safely.
-- **Windows snapshot finalization** — atomic directory promotion occasionally encountered transient filesystem contention. Snapshot finalization now uses bounded retry behavior without silently replacing an existing destination.
-- **Same-run S3 recovery** — rebuilding a partition manifest regenerated its timestamp and changed the manifest hash even when the data was identical. Same-run rebuilds now preserve stable manifest metadata so completed S3 batches can be verified and safely reused during recovery.
-
-Each issue was reproduced, fixed, covered by regression tests, and revalidated through the affected execution path.
-
----
-
-## Clone & Adapt
-
-The repository is designed as a reusable reference implementation rather than a deployment tied to one AWS account, Snowflake account, or synthetic dataset.
-
-To adapt the platform for another environment:
-
-1. Bootstrap the core Snowflake objects with `sql/snowflake_setup.sql`.
-2. Configure the S3 integration and stage from `sql/setup_s3_stage_template.sql`.
-3. Configure the least-privilege Snowflake role from `sql/setup_snowflake_role_template.sql`.
-4. Run `sql/migrate_v2_lineage_columns.sql` only when upgrading a pre-V2 installation.
-5. Replace the synthetic sources, contracts, and dbt models while retaining the reliability framework.
-
-The reusable pieces include data contracts, incremental checkpoints, idempotent publication, guarded warehouse loading, lineage, audit logging, testing, and failure-safe recovery.
-
----
-
-## Production Considerations
-
-This project is intentionally sized as a portfolio platform, so production hardening is treated as a set of architectural questions rather than a shopping list of additional tools.
-
-At materially larger scale or under production operational requirements, the design would need decisions around:
-
-- **Infrastructure lifecycle:** repeatable provisioning, environment isolation, ownership, and change control for cloud and warehouse resources
-- **Secrets and identity:** managed credentials, least-privilege roles, key rotation, and workload identity
-- **Ingestion state:** append/incremental semantics, file-level load state, late-arriving data, replay boundaries, and deduplication across batches
-- **Warehouse promotion:** stronger deployment and rollback patterns for concurrent or continuously arriving workloads
-- **Transformation strategy:** incremental model behavior where full rebuilds are no longer appropriate
-- **Observability:** freshness, volume, quality, and run-failure alerting with operational ownership and escalation paths
-- **Orchestration:** managed deployment, durable scheduling, backfills, notifications, concurrency controls, and service-level expectations
-- **Access control:** environment-specific Snowflake roles and separation of operational duties
-
-The guarded V1 full-reload path remains available for backward-compatible replay, while V2 is the primary stateful incremental path. Each approach is explicit about its tradeoffs and failure semantics.
 
 ---
 
