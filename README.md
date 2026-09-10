@@ -170,6 +170,14 @@ The model lineage keeps the analytical path visible from RAW through Bronze, Sil
 
 ---
 
+## Analytics Dashboard
+
+A live Streamlit dashboard queries the Snowflake Gold and Monitoring layers to surface fraud, dispute, chargeback, daily trend, and pipeline-health analytics.
+
+[**Open the live Streamlit dashboard →**](https://samahmedqa-fraud-dispute-analyti-dashboardsstreamlit-app-5nyqlj.streamlit.app/)
+
+---
+
 ## Idempotency & Replay
 
 The pipeline is designed so the same committed source state can be replayed without producing duplicate incremental work.
