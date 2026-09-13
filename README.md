@@ -27,6 +27,15 @@ flowchart LR
 
 V2 processes only new or changed records and supports zero-change batches. Committed ingestion state advances only after required downstream stages succeed, allowing failed runs to retry safely.
 
+
+## Start Here
+
+For a technical review of the core reliability design, start with:
+
+- [scripts/incremental_selection.py](scripts/incremental_selection.py) — stateful new/changed selection and watermark boundary handling.
+- [scripts/upload_partitioned_to_s3.py](scripts/upload_partitioned_to_s3.py) — run-scoped, idempotent S3 publication and completion semantics.
+- [sql/merge_raw_from_s3.sql](sql/merge_raw_from_s3.sql) — guarded Snowflake incremental MERGE logic.
+
 ---
 
 ## Reliability Design
@@ -224,6 +233,10 @@ Keeping that boundary explicit avoids implying that the current Airflow DAG orch
 
 ## Quick Start
 
+**Runtime:** Python 3.12 (`3.12.6` pinned in `.python-version`).
+
+Examples below use PowerShell on Windows. The Python commands are platform-neutral; only the multi-line replay example uses PowerShell-specific syntax.
+
 ### 1. Install the reproducible development environment
 
 From the repository root:
@@ -282,8 +295,8 @@ Detailed implementation notes, stage-by-stage commands, Snowflake setup, contrac
 
 ---
 
-## Disclaimer
+## License
 
-This repository is a portfolio project using fully synthetic fraud, dispute, chargeback, customer, and transaction data.
+This project is licensed under the [MIT License](LICENSE).
 
-It does not contain proprietary company data, real customer data, production credentials, secrets, or a claim of production operation. External-system execution requires explicit configuration and is dry-run by default where supported by the pipeline CLI.
+---
