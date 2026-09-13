@@ -46,8 +46,7 @@ def get_snowflake_connection():
     return snowflake.connector.connect(
         account=os.getenv("SNOWFLAKE_ACCOUNT"),
         user=os.getenv("SNOWFLAKE_USER"),
-        authenticator="PROGRAMMATIC_ACCESS_TOKEN",
-        token=os.getenv("SNOWFLAKE_PASSWORD"),
+        password=os.getenv("SNOWFLAKE_PASSWORD"),
         role=os.getenv("SNOWFLAKE_ROLE"),
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
         database=os.getenv("SNOWFLAKE_DATABASE"),
