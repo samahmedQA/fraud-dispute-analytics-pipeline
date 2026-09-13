@@ -185,6 +185,8 @@ A live Streamlit dashboard queries the Snowflake Gold and Monitoring layers to s
 
 [**Open the live Streamlit dashboard →**](https://samahmedqa-fraud-dispute-analyti-dashboardsstreamlit-app-5nyqlj.streamlit.app/)
 
+![Streamlit analytics dashboard overview](docs/images/14-streamlit-dashboard-overview.png)
+
 ---
 
 ## Idempotency & Replay
